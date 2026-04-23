@@ -22,7 +22,7 @@ PORT       = 8765
 CRON_LOG   = "/var/log/cron"
 STATUS_DIR = os.path.expanduser("~/.cron_status")
 NOTES_DIR  = os.path.expanduser("~/.cron_notes")
-CONF_FILE  = os.path.expanduser("~/.cron_api.conf")
+CONF_FILE  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cron_api.conf")
 
 def load_conf():
     """Load KEY=VALUE pairs from ~/.cron_api.conf."""
