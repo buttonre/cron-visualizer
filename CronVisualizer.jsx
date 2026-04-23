@@ -609,8 +609,6 @@ export default function CronVisualizer() {
   const [serverName, setServerName]     = useState("");
   const [, setTick]                     = useState(0);
 
-  useEffect(()=>{ const iv=setInterval(()=>fetchTasks(),60000); return()=>clearInterval(iv); },[fetchTasks]);
-
   const fetchTasks = useCallback(async () => {
     try {
       const res = await fetch(API_URL+"/crons", { headers:API_HEADERS, cache:"no-store" });
@@ -620,6 +618,8 @@ export default function CronVisualizer() {
       setError(null);
     } catch(err) { setError(err.message); }
   },[]);
+
+  useEffect(()=>{ const iv=setInterval(()=>fetchTasks(),60000); return()=>clearInterval(iv); },[fetchTasks]);
 
   useEffect(()=>{
     fetch(API_URL+"/info",{headers:API_HEADERS,cache:"no-store"})
