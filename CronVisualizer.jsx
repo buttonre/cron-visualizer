@@ -155,8 +155,9 @@ function cronToState(expr) {
 function relativeTime(iso) {
   if (!iso) return null;
   const diff=new Date(iso).getTime()-Date.now(), abs=Math.abs(diff);
+  if (abs<60000) return diff>0?"< 1 min":"just now";
   const mins=Math.floor(abs/60000), hrs=Math.floor(abs/3600000), days=Math.floor(abs/86400000);
-  const lbl = abs<60000?"just now":mins<60?mins+"m":hrs<24?hrs+"h":days+"d";
+  const lbl = mins<60?mins+"m":hrs<24?hrs+"h":days+"d";
   return diff>0?"in "+lbl:lbl+" ago";
 }
 
@@ -378,8 +379,9 @@ function NotesField({ value, onSave }) {
       <textarea
         value={draft}
         onChange={e=>setDraft(e.target.value)}
+        onKeyDown={e=>{ if(e.key==="Enter"&&!e.altKey){ e.preventDefault(); e.target.blur(); } }}
         onBlur={handleBlur}
-        placeholder="What does this job do? Dependencies, contacts, runbook link..."
+        placeholder="What does this job do? Dependencies, contacts, runbook link... (Enter to save, Alt+Enter for new line)"
         rows={2}
         style={{ width:"100%", boxSizing:"border-box", background:t.inputBg, border:"1px solid "+(dirty?t.amber+"66":t.inputBorder), borderRadius:4, color:t.text, fontSize:11, fontFamily:"inherit", padding:"5px 8px", outline:"none", resize:"vertical", lineHeight:1.5 }}
       />
@@ -416,7 +418,7 @@ function TaskCard({ task, onToggle, onEdit, onNotes, onDelete, onRefresh }) {
             value={task.description}
             onSave={val=>handleFieldSave({description:val})}
             textStyle={{ fontSize:12, fontWeight:800, color:t.text }}
-            maxLength={80}
+            maxLength={120}
           />
           <div style={{ ...lbl, marginTop:6 }}>COMMAND</div>
           <EditableField

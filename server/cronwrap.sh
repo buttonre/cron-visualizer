@@ -51,15 +51,12 @@ printf '{"command":"%s","last_run":"%s","end_time":"%s","exit_code":%d}\n' \
 # Send email alert on failure if enabled
 if [ "$EXIT_CODE" -ne 0 ] && [ "$ENABLE_EMAIL" = "true" ] && [ -n "$EMAIL_RECIPIENT" ]; then
     LABEL="${SERVER_NAME:-$(hostname)}"
-    printf "Subject: [CRON ALERT] Job failed on %s\nFrom: cron@%s\n\nJob: %s\nExit code: %d\nStarted: %s\nFinished: %s\n" \
-        "$LABEL" "$(hostname)" "$CMD" "$EXIT_CODE" "$START" "$END" \
-        | sendmail "$EMAIL_RECIPIENT" 2>/dev/null \
-        || mail -s "[CRON ALERT] Job failed on $LABEL" "$EMAIL_RECIPIENT" <<EOF 2>/dev/null
-Job: $CMD
+    BODY="Job:       $CMD
 Exit code: $EXIT_CODE
-Started:  $START
-Finished: $END
-EOF
+Started:   $START
+Finished:  $END
+Server:    $LABEL"
+    printf "%s" "$BODY" | mailx -s "[CRON ALERT] Job failed on $LABEL" "$EMAIL_RECIPIENT" 2>/dev/null
 fi
 
 # Pass through the original exit code so cron sees failures
