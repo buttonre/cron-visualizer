@@ -111,7 +111,7 @@ def get_last_run_from_log(command):
         # Handle year rollover (Dec log seen in Jan)
         if dt > now + datetime.timedelta(days=1):
             dt = dt.replace(year=now.year - 1)
-        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        return local_to_utc(dt).strftime("%Y-%m-%dT%H:%M:%SZ")
     except Exception:
         return None
 
@@ -131,12 +131,22 @@ def get_job_status(command):
         return None
 
 
+# ── TIMEZONE HELPER ──────────────────────────────────────────────────────────
+
+def local_to_utc(dt):
+    """Convert a naive local datetime to UTC by measuring the current offset."""
+    offset = datetime.datetime.utcnow() - datetime.datetime.now()
+    # Round to nearest minute to avoid sub-second drift
+    total_seconds = int(round(offset.total_seconds() / 60.0)) * 60
+    return dt + datetime.timedelta(seconds=total_seconds)
+
+
 # ── NEXT RUN CALCULATION ──────────────────────────────────────────────────────
 
 def next_run_time(expr):
     """
     Calculate next fire time for common cron patterns.
-    Returns ISO string or None for complex/unsupported expressions.
+    Returns UTC ISO string or None for complex/unsupported expressions.
     """
     if not expr:
         return None
@@ -152,7 +162,7 @@ def next_run_time(expr):
             n = int(min_f[2:])
             wait = n - (now.minute % n)
             nxt  = now + datetime.timedelta(minutes=wait)
-            return nxt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            return local_to_utc(nxt).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         # Hourly at specific minute: M * * * *
         if hour_f == "*" and dom_f == "*" and month_f == "*" and dow_f == "*" and not min_f.startswith("*"):
@@ -160,7 +170,7 @@ def next_run_time(expr):
             nxt = now.replace(minute=m)
             if nxt <= now:
                 nxt += datetime.timedelta(hours=1)
-            return nxt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            return local_to_utc(nxt).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         # Daily: M H * * *
         if dom_f == "*" and month_f == "*" and dow_f == "*" and not min_f.startswith("*") and not hour_f.startswith("*"):
@@ -168,7 +178,7 @@ def next_run_time(expr):
             nxt  = now.replace(hour=h, minute=m)
             if nxt <= now:
                 nxt += datetime.timedelta(days=1)
-            return nxt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            return local_to_utc(nxt).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         # Weekly: M H * * D  (cron: 0=Sun, 1=Mon ... 6=Sat)
         if dom_f == "*" and month_f == "*" and not dow_f.startswith("*") and not min_f.startswith("*") and not hour_f.startswith("*"):
@@ -179,7 +189,7 @@ def next_run_time(expr):
             for i in range(8):
                 candidate = (now + datetime.timedelta(days=i)).replace(hour=h, minute=m)
                 if candidate.weekday() in py_days and candidate > now:
-                    return candidate.strftime("%Y-%m-%dT%H:%M:%SZ")
+                    return local_to_utc(candidate).strftime("%Y-%m-%dT%H:%M:%SZ")
             return None
 
         # Monthly: M H D * *
@@ -191,7 +201,7 @@ def next_run_time(expr):
                     month = now.month + 1 if now.month < 12 else 1
                     year  = now.year if now.month < 12 else now.year + 1
                     nxt   = nxt.replace(year=year, month=month)
-                return nxt.strftime("%Y-%m-%dT%H:%M:%SZ")
+                return local_to_utc(nxt).strftime("%Y-%m-%dT%H:%M:%SZ")
             except ValueError:
                 return None
 
