@@ -3,3 +3,4 @@ dist/
 *.zip
 .claude/
 config.js
+server/cron_api.conf
