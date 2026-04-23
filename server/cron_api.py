@@ -20,8 +20,9 @@ from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 PORT       = 8765
 CRON_LOG   = "/var/log/cron"
-STATUS_DIR = os.path.expanduser("~/.cron_status")
-NOTES_DIR  = os.path.expanduser("~/.cron_notes")
+STATUS_DIR  = os.path.expanduser("~/.cron_status")
+NOTES_DIR   = os.path.expanduser("~/.cron_notes")
+HISTORY_DIR = os.path.expanduser("~/.cron_history")
 CONF_FILE  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cron_api.conf")
 
 def load_conf():
@@ -255,6 +256,32 @@ def save_notes(command, text):
     except Exception:
         return False
 
+def get_history(command, days=7):
+    parts = command.split(None, 1)
+    lookup = parts[1] if len(parts) == 2 and "cronwrap" in parts[0] else command
+    path = os.path.join(HISTORY_DIR, job_id(lookup) + ".jsonl")
+    cutoff = datetime.datetime.utcnow() - datetime.timedelta(days=days)
+    entries = []
+    try:
+        with open(path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                    ts = obj.get("ts", "")
+                    if ts:
+                        dt = datetime.datetime.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S")
+                        if dt >= cutoff:
+                            entries.append(obj)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return list(reversed(entries))  # newest first
+
+
 def get_description(command):
     try:
         with open(notes_base(command) + ".desc", "r") as f:
@@ -336,6 +363,21 @@ class CronHandler(BaseHTTPRequestHandler):
             return
         if not self.authed():
             self.send_json(401, {"error": "unauthorized"})
+            return
+        if self.path.startswith("/crons/history"):
+            if not self.authed():
+                self.send_json(401, {"error": "unauthorized"}); return
+            from urlparse import urlparse, parse_qs
+            qs    = parse_qs(urlparse(self.path).query)
+            idx   = int(qs.get("index", [None])[0]) if qs.get("index") else None
+            days  = int(qs.get("days",  ["7"])[0])
+            if idx is None:
+                self.send_json(400, {"error": "index required"}); return
+            entries, _ = read_crontab()
+            entry = next((e for e in entries if e["index"] == idx), None)
+            if entry is None:
+                self.send_json(404, {"error": "entry not found"}); return
+            self.send_json(200, get_history(entry["command"], days))
             return
         if self.path == "/info":
             import socket
@@ -433,7 +475,7 @@ class CronHandler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    for d in (STATUS_DIR, NOTES_DIR):
+    for d in (STATUS_DIR, NOTES_DIR, HISTORY_DIR):
         if not os.path.exists(d):
             os.makedirs(d)
     if TOKEN == "CHANGE_ME_BEFORE_DEPLOY":

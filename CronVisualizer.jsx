@@ -353,6 +353,79 @@ function ExitBadge({ exitCode, hasWrapper }) {
   );
 }
 
+// ─── HISTORY PANEL ───────────────────────────────────────────────────────────
+
+const DAYS_OPTIONS = [1, 3, 7];
+
+function HistoryPanel({ taskIndex }) {
+  const t = useTheme();
+  const [days, setDays]       = useState(7);
+  const [rows, setRows]       = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`${API_URL}/crons/history?index=${taskIndex}&days=${days}`, { headers:API_HEADERS, cache:"no-store" })
+      .then(r => r.json())
+      .then(d => { setRows(Array.isArray(d) ? d : []); setLoading(false); })
+      .catch(() => { setRows([]); setLoading(false); });
+  }, [taskIndex, days]);
+
+  const fmt = iso => {
+    if (!iso) return "—";
+    const d = new Date(iso), now = Date.now(), diff = now - d.getTime(), abs = Math.abs(diff);
+    if (abs < 60000) return "just now";
+    const mins = Math.floor(abs/60000), hrs = Math.floor(abs/3600000);
+    if (mins < 60)  return mins+"m ago";
+    if (hrs  < 24)  return hrs+"h ago";
+    return d.toLocaleDateString()+' '+d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  };
+
+  const fmtDur = s => s == null ? "—" : s < 60 ? s+"s" : Math.floor(s/60)+"m "+((s%60)+"s");
+
+  return (
+    <div style={{ marginTop:8, borderTop:"1px solid "+t.inputBorder, paddingTop:8 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
+        <span style={{ fontSize:8, color:t.textMuted, fontWeight:700, letterSpacing:0.8 }}>RUN HISTORY</span>
+        <div style={{ display:"flex", gap:4, marginLeft:"auto" }}>
+          {DAYS_OPTIONS.map(d=>(
+            <button key={d} onClick={()=>setDays(d)} style={{ fontSize:8, fontWeight:700, padding:"1px 6px", borderRadius:3, cursor:"pointer", background:days===d?t.blue+"25":t.inputBg, border:"1px solid "+(days===d?t.blue+"66":t.inputBorder), color:days===d?t.blue:t.textMuted }}>
+              {d}d
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading && <div style={{ fontSize:10, color:t.textDim, padding:"8px 0" }}>Loading...</div>}
+
+      {!loading && rows && rows.length === 0 && (
+        <div style={{ fontSize:10, color:t.textDim, padding:"4px 0" }}>No history — wrap this job with cronwrap.sh to start recording.</div>
+      )}
+
+      {!loading && rows && rows.length > 0 && (
+        <div style={{ maxHeight:180, overflowY:"auto" }}>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto", gap:"2px 10px", alignItems:"center" }}>
+            <span style={{ fontSize:8, color:t.textDim, fontWeight:700, letterSpacing:0.5 }}>WHEN</span>
+            <span style={{ fontSize:8, color:t.textDim, fontWeight:700, letterSpacing:0.5 }}>DUR</span>
+            <span style={{ fontSize:8, color:t.textDim, fontWeight:700, letterSpacing:0.5 }}>STATUS</span>
+            {rows.map((r, i) => {
+              const ok = r.exit === 0;
+              const hint = EXIT_HINTS[r.exit] || ("Exit "+r.exit);
+              return [
+                <span key={"w"+i} style={{ fontSize:10, color:t.slate }}>{fmt(r.ts)}</span>,
+                <span key={"d"+i} style={{ fontSize:10, color:t.textMuted }}>{fmtDur(r.dur)}</span>,
+                <span key={"s"+i} title={hint} style={{ fontSize:9, fontWeight:800, padding:"1px 5px", borderRadius:3, background:(ok?t.green:t.red)+"18", color:ok?t.green:t.red, border:"1px solid "+(ok?t.green:t.red)+"33", cursor:"help", whiteSpace:"nowrap" }}>
+                  {ok?"✓ OK":"✗ ERR "+r.exit}
+                </span>
+              ];
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NotesField({ value, onSave }) {
   const t = useTheme();
   const [draft, setDraft]   = useState(value||"");
@@ -397,6 +470,7 @@ function TaskCard({ task, onToggle, onEdit, onNotes, onDelete, onRefresh }) {
   const lastRel = task.lastRunAt ? relativeTime(task.lastRunAt) : null;
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [saveMsg, setSaveMsg]             = useState(null);
+  const [showHistory, setShowHistory]     = useState(false);
 
   const handleFieldSave = async (changes) => {
     const result = await onEdit(task.taskId, changes);
@@ -473,6 +547,14 @@ function TaskCard({ task, onToggle, onEdit, onNotes, onDelete, onRefresh }) {
 
       {/* Notes */}
       <NotesField value={task.notes} onSave={text=>onNotes(task.taskId, text)} />
+
+      {/* History toggle */}
+      <div style={{ marginTop:8, display:"flex", justifyContent:"flex-end" }}>
+        <button onClick={()=>setShowHistory(h=>!h)} style={{ fontSize:8, fontWeight:700, padding:"2px 8px", borderRadius:3, cursor:"pointer", background:showHistory?t.blue+"25":t.inputBg, border:"1px solid "+(showHistory?t.blue+"66":t.inputBorder), color:showHistory?t.blue:t.textMuted, letterSpacing:0.5 }}>
+          {showHistory?"▲ HIDE HISTORY":"▼ RUN HISTORY"}
+        </button>
+      </div>
+      {showHistory && <HistoryPanel taskIndex={task.index} />}
     </div>
   );
 }
@@ -527,7 +609,7 @@ export default function CronVisualizer() {
   const [serverName, setServerName]     = useState("");
   const [, setTick]                     = useState(0);
 
-  useEffect(()=>{ const iv=setInterval(()=>setTick(n=>n+1),30000); return()=>clearInterval(iv); },[]);
+  useEffect(()=>{ const iv=setInterval(()=>fetchTasks(),60000); return()=>clearInterval(iv); },[fetchTasks]);
 
   const fetchTasks = useCallback(async () => {
     try {
