@@ -121,9 +121,12 @@ def get_last_run_from_log(command):
 def get_job_status(command):
     """
     Read ~/.cron_status/<job_id>.json written by cronwrap.sh.
-    Returns dict with last_run, exit_code, end_time or None if not found.
+    cronwrap.sh hashes $* (args only), so strip the cronwrap.sh prefix
+    before deriving the job ID.
     """
-    path = os.path.join(STATUS_DIR, job_id(command) + ".json")
+    parts = command.split(None, 1)
+    lookup = parts[1] if len(parts) == 2 and "cronwrap" in parts[0] else command
+    path = os.path.join(STATUS_DIR, job_id(lookup) + ".json")
     try:
         with open(path, "r") as f:
             return json.load(f)
