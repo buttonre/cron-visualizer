@@ -247,6 +247,7 @@ class CronHandler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Headers", "X-Token, Content-Type")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")

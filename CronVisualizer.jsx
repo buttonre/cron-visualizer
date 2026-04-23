@@ -473,7 +473,7 @@ export default function CronVisualizer() {
 
   const fetchTasks = useCallback(async () => {
     try {
-      const res = await fetch(API_URL+"/crons", { headers:API_HEADERS });
+      const res = await fetch(API_URL+"/crons", { headers:API_HEADERS, cache:"no-store" });
       if (!res.ok) throw new Error("Server returned "+res.status);
       const data = await res.json();
       setTasks(data.map(e=>({ taskId:String(e.index), index:e.index, description:e.command, command:e.command, cronExpression:e.cronExpression, enabled:e.enabled, nextRunAt:e.nextRunAt||null, lastRunAt:e.lastRunAt||null, exitCode:e.exitCode??null, hasWrapper:e.hasWrapper||false })));
