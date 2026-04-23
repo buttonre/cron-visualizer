@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
-// ─── CONFIG — update these before running ─────────────────────────────────────
-const API_URL   = "http://localhost:8765";   // SSH tunnel: ssh -N -L 8765:127.0.0.1:8765 user@host
-const API_TOKEN = "CHANGE_ME_BEFORE_DEPLOY"; // must match TOKEN in cron_api.py
+// ─── CONFIG — edit config.js (gitignored) to set your values ─────────────────
+import { API_URL, API_TOKEN } from "./config.js";
 // ─────────────────────────────────────────────────────────────────────────────
 
 const API_HEADERS = {
