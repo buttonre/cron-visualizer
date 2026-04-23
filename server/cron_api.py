@@ -301,8 +301,11 @@ def save_description(command, text):
 # ── ENRICH ENTRY ──────────────────────────────────────────────────────────────
 
 def enrich(entry):
-    """Add lastRunAt, nextRunAt, exitCode, hasWrapper, notes to a cron entry dict."""
+    """Add lastRunAt, nextRunAt, exitCode, hasWrapper, notes, jobId to a cron entry dict."""
     cmd    = entry["command"]
+    parts  = cmd.split(None, 1)
+    lookup = parts[1] if len(parts) == 2 and "cronwrap" in parts[0] else cmd
+    entry["jobId"] = job_id(lookup)
     status = get_job_status(cmd)
 
     if status:
@@ -421,8 +424,20 @@ class CronHandler(BaseHTTPRequestHandler):
             entry = next((e for e in entries if e["index"] == idx), None)
             if entry is None:
                 self.send_json(404, {"error": "entry not found"}); return
+            old_cmd = entry["command"]
             expr = new_expr if new_expr else entry["cronExpression"]
-            cmd  = new_cmd  if new_cmd  else entry["command"]
+            cmd  = new_cmd  if new_cmd  else old_cmd
+            # Carry over notes/.desc files when command string changes (job_id changes)
+            if cmd != old_cmd:
+                import shutil
+                old_base = notes_base(old_cmd)
+                new_base = notes_base(cmd)
+                for ext in (".txt", ".desc"):
+                    src = old_base + ext
+                    dst = new_base + ext
+                    if os.path.exists(src) and not os.path.exists(dst):
+                        try: shutil.copy2(src, dst)
+                        except Exception: pass
             new_line = expr + " " + cmd
             if not entry["enabled"]:
                 new_line = "# " + new_line

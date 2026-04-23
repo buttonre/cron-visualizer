@@ -9,22 +9,28 @@
 # USAGE in crontab:
 #   */5 * * * * /home/your_user/cronwrap.sh /path/to/your/script.sh
 #
-# Config (cron_api.conf in same dir as this script):
+# Config (cron_api.conf — searched in order: same dir as script, $HOME, $HOME/.cron_api.conf):
 #   ENABLE_EMAIL=true
 #   EMAIL_RECIPIENT=you@example.com
 #   SERVER_NAME=MyServer
+#
+# TIP: if cronwrap.sh is in ~ and cron_api.conf is in server/, symlink it:
+#   ln -s ~/path/to/server/cron_api.conf ~/cron_api.conf
 
 STATUS_DIR="$HOME/.cron_status"
 HISTORY_DIR="$HOME/.cron_history"
 mkdir -p "$STATUS_DIR" "$HISTORY_DIR"
 
-# Load config from same directory as this script
+# Load config — checks (in order): same dir as this script, $HOME, $HOME/.cron_api.conf
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CONF_FILE="$SCRIPT_DIR/cron_api.conf"
+CONF_FILE=""
+for _candidate in "$SCRIPT_DIR/cron_api.conf" "$HOME/cron_api.conf" "$HOME/.cron_api.conf"; do
+    if [ -f "$_candidate" ]; then CONF_FILE="$_candidate"; break; fi
+done
 ENABLE_EMAIL="false"
 EMAIL_RECIPIENT=""
 SERVER_NAME=""
-if [ -f "$CONF_FILE" ]; then
+if [ -n "$CONF_FILE" ]; then
     ENABLE_EMAIL=$(grep -E "^ENABLE_EMAIL=" "$CONF_FILE" | cut -d= -f2 | tr -d '[:space:]')
     EMAIL_RECIPIENT=$(grep -E "^EMAIL_RECIPIENT=" "$CONF_FILE" | cut -d= -f2 | tr -d '[:space:]')
     SERVER_NAME=$(grep -E "^SERVER_NAME=" "$CONF_FILE" | cut -d= -f2 | tr -d '[:space:]')

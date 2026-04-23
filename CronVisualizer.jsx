@@ -531,6 +531,7 @@ function TaskCard({ task, onToggle, onEdit, onNotes, onDelete, onRefresh }) {
             <span style={{ fontSize:11, color:t.slate, fontWeight:700 }}>{lastRel||<span style={{ color:t.textDim }}>Never</span>}</span>
             <ExitBadge exitCode={task.exitCode} hasWrapper={task.hasWrapper} />
           </div>
+          {task.jobId && <div style={{ fontSize:8, color:t.textDimmer, marginTop:2, fontFamily:"monospace" }}>id:{task.jobId}</div>}
         </div>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end" }}>
           {confirmDelete ? (
@@ -614,7 +615,7 @@ export default function CronVisualizer() {
       const res = await fetch(API_URL+"/crons", { headers:API_HEADERS, cache:"no-store" });
       if (!res.ok) throw new Error("Server returned "+res.status);
       const data = await res.json();
-      setTasks(data.map(e=>({ taskId:String(e.index), index:e.index, description:e.description||e.command, command:e.command, cronExpression:e.cronExpression, enabled:e.enabled, nextRunAt:e.nextRunAt||null, lastRunAt:e.lastRunAt||null, exitCode:e.exitCode??null, hasWrapper:e.hasWrapper||false, notes:e.notes||"" })));
+      setTasks(data.map(e=>({ taskId:String(e.index), index:e.index, jobId:e.jobId||"", description:e.description||e.command, command:e.command, cronExpression:e.cronExpression, enabled:e.enabled, nextRunAt:e.nextRunAt||null, lastRunAt:e.lastRunAt||null, exitCode:e.exitCode??null, hasWrapper:e.hasWrapper||false, notes:e.notes||"" })));
       setError(null);
     } catch(err) { setError(err.message); }
   },[]);
