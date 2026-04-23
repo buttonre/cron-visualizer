@@ -5,28 +5,32 @@ cron_api.py -- Cron Visualizer API Server
 Python 2.7.5 compatible (RHEL 7)
 
 Usage:
-    nohup python cron_api.py &
-
-Runs as the user whose crontab you want to manage.
+    nohup python ~/cron_api.py > /dev/null 2>&1 &
 """
 
 import json
 import subprocess
 import sys
+import os
+import re
+import hashlib
+import datetime
 from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
-PORT  = 8765
-TOKEN = "CHANGE_ME_BEFORE_DEPLOY"   # set this to anything secret, match in React
+PORT       = 8765
+TOKEN      = "CHANGE_ME_BEFORE_DEPLOY"
+CRON_LOG   = "/var/log/cron"
+STATUS_DIR = os.path.expanduser("~/.cron_status")
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+# ── CRON READING / WRITING ────────────────────────────────────────────────────
+
 def read_crontab():
-    """Returns (entries, raw_lines). Handles empty/missing crontab gracefully."""
+    """Returns (entries, raw_lines)."""
     try:
-        output = subprocess.check_output(
-            ["crontab", "-l"], stderr=subprocess.STDOUT
-        )
+        output = subprocess.check_output(["crontab", "-l"], stderr=subprocess.STDOUT)
         raw_lines = output.decode("utf-8").splitlines()
     except subprocess.CalledProcessError:
         raw_lines = []
@@ -51,22 +55,182 @@ def read_crontab():
 
 
 def write_crontab(lines):
-    """Writes lines list back to the current user's crontab. Returns (ok, err)."""
     content = "\n".join(lines) + "\n"
-    proc = subprocess.Popen(
-        ["crontab", "-"],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    proc = subprocess.Popen(["crontab", "-"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     _, err = proc.communicate(content.encode("utf-8"))
     return proc.returncode == 0, err.decode("utf-8").strip()
 
 
+# ── JOB ID ────────────────────────────────────────────────────────────────────
+
+def job_id(command):
+    """Stable 8-char ID derived from command string. Same logic as cronwrap.sh."""
+    return hashlib.md5(command.encode("utf-8")).hexdigest()[:8]
+
+
+# ── LAST RUN FROM /var/log/cron ───────────────────────────────────────────────
+
+def tail_file(path, max_bytes=131072):
+    """Read the last max_bytes of a file. Returns list of lines."""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, 2)
+            size = f.tell()
+            f.seek(max(0, size - max_bytes))
+            return f.read().decode("utf-8", errors="replace").splitlines()
+    except Exception:
+        return []
+
+
+def get_last_run_from_log(command):
+    """
+    Scan /var/log/cron for the most recent CMD entry matching this command.
+    Returns ISO timestamp string or None.
+    Note: /var/log/cron may not be readable by non-root users.
+    """
+    lines = tail_file(CRON_LOG)
+    if not lines:
+        return None
+
+    # Log line format: "Apr 23 09:00:01 hostname CROND[pid]: (user) CMD (command)"
+    pattern = re.compile(r'(\w{3}\s+\d+\s+\d+:\d+:\d+).*\bCMD\s+\((.+)\)\s*$')
+    last_ts = None
+    for line in lines:
+        m = pattern.search(line)
+        if m:
+            ts_str = m.group(1).strip()
+            cmd    = m.group(2).strip()
+            if cmd == command:
+                last_ts = ts_str
+
+    if last_ts is None:
+        return None
+    try:
+        now = datetime.datetime.now()
+        dt  = datetime.datetime.strptime(last_ts, "%b %d %H:%M:%S").replace(year=now.year)
+        # Handle year rollover (Dec log seen in Jan)
+        if dt > now + datetime.timedelta(days=1):
+            dt = dt.replace(year=now.year - 1)
+        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    except Exception:
+        return None
+
+
+# ── STATUS FILES (written by cronwrap.sh) ────────────────────────────────────
+
+def get_job_status(command):
+    """
+    Read ~/.cron_status/<job_id>.json written by cronwrap.sh.
+    Returns dict with last_run, exit_code, end_time or None if not found.
+    """
+    path = os.path.join(STATUS_DIR, job_id(command) + ".json")
+    try:
+        with open(path, "r") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+# ── NEXT RUN CALCULATION ──────────────────────────────────────────────────────
+
+def next_run_time(expr):
+    """
+    Calculate next fire time for common cron patterns.
+    Returns ISO string or None for complex/unsupported expressions.
+    """
+    if not expr:
+        return None
+    parts = expr.strip().split()
+    if len(parts) != 5:
+        return None
+    min_f, hour_f, dom_f, month_f, dow_f = parts
+    now = datetime.datetime.now().replace(second=0, microsecond=0)
+
+    try:
+        # Every N minutes: */N * * * *
+        if min_f.startswith("*/") and hour_f == "*" and dom_f == "*" and month_f == "*" and dow_f == "*":
+            n = int(min_f[2:])
+            wait = n - (now.minute % n)
+            nxt  = now + datetime.timedelta(minutes=wait)
+            return nxt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        # Hourly at specific minute: M * * * *
+        if hour_f == "*" and dom_f == "*" and month_f == "*" and dow_f == "*" and not min_f.startswith("*"):
+            m   = int(min_f)
+            nxt = now.replace(minute=m)
+            if nxt <= now:
+                nxt += datetime.timedelta(hours=1)
+            return nxt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        # Daily: M H * * *
+        if dom_f == "*" and month_f == "*" and dow_f == "*" and not min_f.startswith("*") and not hour_f.startswith("*"):
+            h, m = int(hour_f), int(min_f)
+            nxt  = now.replace(hour=h, minute=m)
+            if nxt <= now:
+                nxt += datetime.timedelta(days=1)
+            return nxt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        # Weekly: M H * * D  (cron: 0=Sun, 1=Mon ... 6=Sat)
+        if dom_f == "*" and month_f == "*" and not dow_f.startswith("*") and not min_f.startswith("*") and not hour_f.startswith("*"):
+            h, m      = int(hour_f), int(min_f)
+            cron_days = [int(d) % 7 for d in dow_f.split(",")]
+            # cron 0=Sun -> python weekday 6; cron 1=Mon -> python 0; etc.
+            py_days   = [(d - 1) % 7 for d in cron_days]
+            for i in range(8):
+                candidate = (now + datetime.timedelta(days=i)).replace(hour=h, minute=m)
+                if candidate.weekday() in py_days and candidate > now:
+                    return candidate.strftime("%Y-%m-%dT%H:%M:%SZ")
+            return None
+
+        # Monthly: M H D * *
+        if not dom_f.startswith("*") and month_f == "*" and dow_f == "*" and not min_f.startswith("*") and not hour_f.startswith("*"):
+            h, m, day = int(hour_f), int(min_f), int(dom_f)
+            try:
+                nxt = now.replace(day=day, hour=h, minute=m)
+                if nxt <= now:
+                    month = now.month + 1 if now.month < 12 else 1
+                    year  = now.year if now.month < 12 else now.year + 1
+                    nxt   = nxt.replace(year=year, month=month)
+                return nxt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            except ValueError:
+                return None
+
+    except Exception:
+        return None
+
+    return None
+
+
+# ── ENRICH ENTRY ──────────────────────────────────────────────────────────────
+
+def enrich(entry):
+    """Add lastRunAt, nextRunAt, exitCode, hasWrapper to a cron entry dict."""
+    cmd    = entry["command"]
+    status = get_job_status(cmd)
+
+    if status:
+        last_run  = status.get("last_run")
+        exit_code = status.get("exit_code")
+        has_wrapper = True
+    else:
+        # Fall back to /var/log/cron (timestamp only, no exit code)
+        last_run    = get_last_run_from_log(cmd)
+        exit_code   = None
+        has_wrapper = False
+
+    entry["lastRunAt"]   = last_run
+    entry["nextRunAt"]   = next_run_time(entry["cronExpression"]) if entry["enabled"] else None
+    entry["exitCode"]    = exit_code
+    entry["hasWrapper"]  = has_wrapper
+    return entry
+
+
+# ── HTTP HANDLER ──────────────────────────────────────────────────────────────
+
 class CronHandler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
-        pass  # silence default access log; errors still print
+        pass
 
     def send_json(self, code, data):
         body = json.dumps(data).encode("utf-8")
@@ -84,11 +248,7 @@ class CronHandler(BaseHTTPRequestHandler):
 
     def read_body(self):
         length = int(self.headers.getheader("Content-Length", "0"))
-        if length == 0:
-            return {}
-        return json.loads(self.rfile.read(length).decode("utf-8"))
-
-    # ── OPTIONS (CORS preflight) ──────────────────────────────────────────────
+        return json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
 
     def do_OPTIONS(self):
         self.send_response(200)
@@ -96,8 +256,6 @@ class CronHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "X-Token, Content-Type")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.end_headers()
-
-    # ── GET ───────────────────────────────────────────────────────────────────
 
     def do_GET(self):
         if self.path == "/health":
@@ -108,11 +266,9 @@ class CronHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/crons":
             entries, _ = read_crontab()
-            self.send_json(200, entries)
+            self.send_json(200, [enrich(e) for e in entries])
         else:
             self.send_json(404, {"error": "not found"})
-
-    # ── POST ──────────────────────────────────────────────────────────────────
 
     def do_POST(self):
         if not self.authed():
@@ -126,8 +282,7 @@ class CronHandler(BaseHTTPRequestHandler):
             entries, lines = read_crontab()
             entry = next((e for e in entries if e["index"] == idx), None)
             if entry is None:
-                self.send_json(404, {"error": "entry not found"})
-                return
+                self.send_json(404, {"error": "entry not found"}); return
             if entry["enabled"]:
                 lines[idx] = "# " + lines[idx]
             else:
@@ -136,13 +291,12 @@ class CronHandler(BaseHTTPRequestHandler):
             self.send_json(200 if ok else 500, {"ok": ok, "error": err})
 
         elif self.path == "/crons/update":
-            idx     = body.get("index")
+            idx      = body.get("index")
             new_expr = body.get("cronExpression", "").strip()
             entries, lines = read_crontab()
             entry = next((e for e in entries if e["index"] == idx), None)
             if entry is None:
-                self.send_json(404, {"error": "entry not found"})
-                return
+                self.send_json(404, {"error": "entry not found"}); return
             new_line = new_expr + " " + entry["command"]
             if not entry["enabled"]:
                 new_line = "# " + new_line
@@ -155,8 +309,7 @@ class CronHandler(BaseHTTPRequestHandler):
             entries, lines = read_crontab()
             entry = next((e for e in entries if e["index"] == idx), None)
             if entry is None:
-                self.send_json(404, {"error": "entry not found"})
-                return
+                self.send_json(404, {"error": "entry not found"}); return
             lines.pop(idx)
             ok, err = write_crontab(lines)
             self.send_json(200 if ok else 500, {"ok": ok, "error": err})
@@ -165,8 +318,7 @@ class CronHandler(BaseHTTPRequestHandler):
             expr    = body.get("cronExpression", "").strip()
             command = body.get("command", "").strip()
             if not expr or not command:
-                self.send_json(400, {"error": "cronExpression and command required"})
-                return
+                self.send_json(400, {"error": "cronExpression and command required"}); return
             _, lines = read_crontab()
             lines.append(expr + " " + command)
             ok, err = write_crontab(lines)
@@ -177,9 +329,10 @@ class CronHandler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    if not os.path.exists(STATUS_DIR):
+        os.makedirs(STATUS_DIR)
     server = HTTPServer(("0.0.0.0", PORT), CronHandler)
-    print("Cron API listening on port %d  (token auth required)" % PORT)
-    print("Hit Ctrl+C to stop.")
+    print("Cron API listening on port %d" % PORT)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

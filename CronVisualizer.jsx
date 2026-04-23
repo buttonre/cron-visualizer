@@ -321,11 +321,22 @@ const STATUS_CONFIG = {
   paused: { label:"PAUSED", color:"#f59e0b", pulse:false },
 };
 
+function ExitBadge({ exitCode, hasWrapper }) {
+  const t = useTheme();
+  if (!hasWrapper)   return <span style={{ fontSize:9, color:t.textDim, fontStyle:"italic" }}>no wrapper</span>;
+  if (exitCode === null) return <span style={{ fontSize:9, color:t.textDim }}>—</span>;
+  const ok = exitCode === 0;
+  return (
+    <span style={{ fontSize:9, fontWeight:800, padding:"1px 6px", borderRadius:4, background:(ok?t.green:t.red)+"18", color:ok?t.green:t.red, border:"1px solid "+(ok?t.green:t.red)+"44" }}>
+      {ok ? "✓ OK" : "✗ ERR "+exitCode}
+    </span>
+  );
+}
+
 function TaskCard({ task, onToggle, onEdit, onDelete }) {
-  const t  = useTheme();
-  const sc = STATUS_CONFIG[task.enabled?"active":"paused"];
-  // Use theme-adjusted color for paused
+  const t       = useTheme();
   const scColor = task.enabled ? t.green : t.amber;
+  const scLabel = task.enabled ? "ACTIVE" : "PAUSED";
   const nextRel = relativeTime(task.nextRunAt);
   const lastRel = task.lastRunAt ? relativeTime(task.lastRunAt) : null;
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -333,7 +344,7 @@ function TaskCard({ task, onToggle, onEdit, onDelete }) {
   return (
     <div style={{ background:t.cardBg, border:"1px solid "+(task.enabled?t.cardBorder:t.cardBorderOff), borderLeft:"3px solid "+scColor, borderRadius:10, padding:"10px 14px", opacity:task.enabled?1:0.65, transition:"opacity 0.2s" }}>
 
-      {/* Top row: description | status badge | toggle */}
+      {/* Top row */}
       <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
         <div style={{ flex:1, minWidth:0 }}>
           <EditableField
@@ -344,7 +355,7 @@ function TaskCard({ task, onToggle, onEdit, onDelete }) {
           <div style={{ fontSize:9, color:t.textSub, marginTop:2, fontFamily:"monospace", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{task.command}</div>
         </div>
         <div style={{ fontSize:8, fontWeight:700, padding:"2px 8px", borderRadius:10, whiteSpace:"nowrap", background:scColor+"18", color:scColor, border:"1px solid "+scColor+"44", animation:task.enabled?"pulse 2s infinite":"none" }}>
-          {task.enabled&&<span style={{ marginRight:3 }}>●</span>}{sc.label}
+          {task.enabled&&<span style={{ marginRight:3 }}>●</span>}{scLabel}
         </div>
         <Toggle enabled={task.enabled} onChange={()=>onToggle(task.taskId)} />
       </div>
@@ -354,15 +365,20 @@ function TaskCard({ task, onToggle, onEdit, onDelete }) {
 
       {/* Time grid + Delete (3 columns) */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr auto", gap:8, alignItems:"stretch" }}>
-        {[
-          { label:"NEXT RUN", value:task.enabled?(nextRel||"—"):"Paused", color:task.enabled&&nextRel?.startsWith("in")?t.green:t.slate },
-          { label:"LAST RUN", value:lastRel, color:t.slate },
-        ].map(({label,value,color})=>(
-          <div key={label} style={{ background:t.inputBg, border:"1px solid "+t.inputBorder, borderRadius:6, padding:"6px 8px" }}>
-            <div style={{ fontSize:8, color:t.textMuted, fontWeight:700, letterSpacing:0.8, marginBottom:2 }}>{label}</div>
-            <div style={{ fontSize:11, color, fontWeight:700 }}>{value||<span style={{ color:t.textDim }}>N/A</span>}</div>
+        <div style={{ background:t.inputBg, border:"1px solid "+t.inputBorder, borderRadius:6, padding:"6px 8px" }}>
+          <div style={{ fontSize:8, color:t.textMuted, fontWeight:700, letterSpacing:0.8, marginBottom:2 }}>NEXT RUN</div>
+          <div style={{ fontSize:11, color:task.enabled&&nextRel?.startsWith("in")?t.green:t.slate, fontWeight:700 }}>
+            {task.enabled ? (nextRel||"—") : "Paused"}
           </div>
-        ))}
+        </div>
+
+        <div style={{ background:t.inputBg, border:"1px solid "+t.inputBorder, borderRadius:6, padding:"6px 8px" }}>
+          <div style={{ fontSize:8, color:t.textMuted, fontWeight:700, letterSpacing:0.8, marginBottom:3 }}>LAST RUN</div>
+          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+            <span style={{ fontSize:11, color:t.slate, fontWeight:700 }}>{lastRel||<span style={{ color:t.textDim }}>Never</span>}</span>
+            <ExitBadge exitCode={task.exitCode} hasWrapper={task.hasWrapper} />
+          </div>
+        </div>
 
         {/* Delete cell */}
         <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end" }}>
