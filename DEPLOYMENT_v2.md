@@ -1,58 +1,43 @@
-# Deployment Guide v2 — Remote Linux Cron via Windows Browser
+# Deployment Guide v2 — Cron Visualizer
 
-**Target:** Windows 11 laptop → React UI → Red Hat Linux (Python 2.7.5) on same LAN
-**Time:** ~30 minutes once you have SSH access confirmed
-
----
-
-## Prerequisites
-
-- SSH access to the Red Hat box (username + password or key)
-- The Linux box IP address on your LAN (e.g. `192.168.1.50`)
-- Node.js installed on Windows (for the React dev server)
+**Setup:** Windows laptop → React UI → Red Hat Linux (Python 2.7.5) on same LAN via SSH tunnel
+**Time:** ~20 minutes
 
 ---
 
-## Step 1 — Confirm SSH works from Windows
+## What You Need
 
-Open PowerShell and run:
+- SSH access to the Red Hat Linux box (username + password)
+- The Linux box IP address (e.g. `192.168.1.50`)
+- Node.js installed on Windows
+- The cron-visualizer repo cloned on Windows
+
+---
+
+## One-Time Setup
+
+### Step 1 — Clone the repo (skip if already done)
 
 ```powershell
-ssh -V
+git clone https://github.com/buttonre/cron-visualizer.git
+cd cron-visualizer
+npm install
 ```
 
-If you see a version number (e.g. `OpenSSH_8.x`), you're done — Windows OpenSSH is available.
-
-If not, install it: **Settings → Apps → Optional Features → Add a feature → OpenSSH Client**
-
-Test the connection:
+### Step 2 — Copy cron_api.py to the Linux box
 
 ```powershell
-ssh your_username@192.168.1.50
+scp server\cron_api.py your_username@YOUR_LINUX_IP:~/cron_api.py
 ```
 
-If that logs you in, SSH is working. Type `exit` to close.
+Or use WinSCP (free GUI) to drag the file over.
 
----
+### Step 3 — Set your secret token on Linux
 
-## Step 2 — Copy cron_api.py to the Linux server
-
-From PowerShell on Windows:
-
-```powershell
-scp "C:\Users\butto\Documents\AI\MyMemory\Projects\cron-visualizer\server\cron_api.py" your_username@192.168.1.50:~/cron_api.py
-```
-
-**Alternative (GUI):** Use WinSCP (free) — connect to the server, drag cron_api.py to the home directory.
-
----
-
-## Step 3 — Set your secret token
-
-SSH into the server and open the file:
+SSH in and edit the file:
 
 ```bash
-ssh your_username@192.168.1.50
+ssh your_username@YOUR_LINUX_IP
 nano ~/cron_api.py
 ```
 
@@ -62,50 +47,28 @@ Change line 19:
 TOKEN = "CHANGE_ME_BEFORE_DEPLOY"
 ```
 
-to something only you know, e.g.:
+to something only you know:
 
 ```python
 TOKEN = "richcron2026"
 ```
 
-Save and exit (Ctrl+X, Y, Enter in nano).
+Save (Ctrl+X, Y, Enter).
 
-**Also update the matching line in CronVisualizer.jsx on Windows:**
+### Step 4 — Set the same token in CronVisualizer.jsx on Windows
+
+Open `CronVisualizer.jsx` and update lines 4–5:
 
 ```js
-const API_TOKEN = "richcron2026";   // must match TOKEN in cron_api.py
+const API_URL   = "http://localhost:8765";  // leave as localhost — tunnel handles it
+const API_TOKEN = "richcron2026";           // must match TOKEN in cron_api.py
 ```
 
----
-
-## Step 4 — Open port 8765 on Linux firewall
-
-Still SSH'd in, run:
+### Step 5 — Start cron_api.py on Linux
 
 ```bash
-sudo iptables -I INPUT -p tcp --dport 8765 -j ACCEPT
+nohup python ~/cron_api.py > /dev/null 2>&1 &
 ```
-
-**Test it:** From a second PowerShell window on Windows, run:
-
-```powershell
-curl http://192.168.1.50:8765/health
-```
-
-You should see: `{"status": "ok"}`
-
-If you get "connection refused" → the API isn't running yet (Step 5).
-If you get "no response" / timeout → firewall is blocking it (see SSH tunnel fallback below).
-
----
-
-## Step 5 — Start cron_api.py on Linux
-
-```bash
-nohup python ~/cron_api.py > ~/cron_api.log 2>&1 &
-```
-
-This starts it in the background and survives your SSH session ending.
 
 Confirm it's running:
 
@@ -113,43 +76,9 @@ Confirm it's running:
 ps aux | grep cron_api
 ```
 
-Check logs if something's wrong:
+### Step 6 — Auto-start cron_api.py on reboot (silent)
 
-```bash
-cat ~/cron_api.log
-```
-
-Expected output in the log: `Cron API listening on port 8765  (token auth required)`
-
----
-
-## Step 6 — Update API_URL in CronVisualizer.jsx
-
-Open `CronVisualizer.jsx` on Windows and set the real IP at the top:
-
-```js
-const API_URL   = "http://192.168.1.50:8765";  // your actual Linux IP
-const API_TOKEN = "richcron2026";               // must match cron_api.py
-```
-
----
-
-## Step 7 — Run the React app on Windows
-
-```powershell
-cd "C:\Users\butto\Documents\AI\MyMemory\Projects\cron-visualizer"
-npm run dev
-```
-
-Open your browser to: **http://localhost:3131**
-
-You should see your real Linux cron jobs listed in the UI.
-
----
-
-## Step 8 — Keep cron_api.py running after reboot (optional)
-
-Add a cron entry on the Linux box to auto-restart the API:
+Add a cron entry so it starts automatically with no output:
 
 ```bash
 crontab -e
@@ -158,53 +87,63 @@ crontab -e
 Add this line:
 
 ```
-@reboot nohup python /home/your_username/cron_api.py > /home/your_username/cron_api.log 2>&1 &
+@reboot nohup python /home/your_username/cron_api.py > /dev/null 2>&1 &
 ```
+
+Save and exit. The API will now start silently on every reboot with no logs or output.
 
 ---
 
-## Fallback — SSH Tunnel (if Step 4 firewall doesn't work)
+## Every Day — Run Order
 
-If the firewall can't be opened (no sudo/root), use an SSH tunnel instead.
-This runs in the background on Windows and forwards a local port through SSH to the Linux box.
+Run these steps in order each time you want to use the visualizer.
 
-**Option A — Windows OpenSSH (PowerShell):**
+**Step 1 — Open an SSH tunnel** (Terminal/PowerShell window #1 — leave it open)
 
 ```powershell
-ssh -N -L 8765:localhost:8765 your_username@192.168.1.50
+ssh -N -L 8765:127.0.0.1:8765 your_username@YOUR_LINUX_IP
 ```
 
-Leave this terminal open. Now the React app can reach the Linux API at `http://localhost:8765`.
+Type your password and hit Enter. It will sit there silently — that's correct. Do not close this window.
 
-Update `CronVisualizer.jsx`:
+**Step 2 — Start the React app** (Terminal/PowerShell window #2)
 
-```js
-const API_URL = "http://localhost:8765";
+```powershell
+cd C:\users\your_username\workspace\cron-visualizer
+npm run dev
 ```
 
-**Option B — PuTTY (GUI):**
+**Step 3 — Open the browser**
 
-1. Open PuTTY → enter hostname: `192.168.1.50`, port `22`
-2. Go to Connection → SSH → Tunnels
-3. Source port: `8765`, Destination: `localhost:8765`, click Add
-4. Go back to Session, click Open
-5. Log in — leave the window open
-
-Same result: React hits `http://localhost:8765` which tunnels to Linux.
+```
+http://localhost:3131
+```
 
 ---
 
 ## Quick Reference
 
-| What | Where |
+| What | Value |
 |------|-------|
-| API server script | `~/cron_api.py` on Linux |
-| API logs | `~/cron_api.log` on Linux |
-| React app | `C:\...\cron-visualizer\` on Windows |
-| Default port | 8765 |
-| Health check | `http://LINUX_IP:8765/health` (no token needed) |
-| Stop the API | `pkill -f cron_api.py` on Linux |
+| React app URL | http://localhost:3131 |
+| API health check | http://localhost:8765/health |
+| API port | 8765 |
+| Token config | Top of CronVisualizer.jsx + line 19 of cron_api.py |
+| Stop the API on Linux | `pkill -f cron_api.py` |
+| Check API logs | `ps aux \| grep cron_api` |
 
 ---
 
-*DEPLOYMENT_v2.md · Sprint 4 · 2026-04-22*
+## Troubleshooting
+
+| Symptom | Fix |
+|---------|-----|
+| "Cannot reach server — Failed to fetch" | SSH tunnel not running — run Step 1 |
+| Browser shows nothing at localhost:3131 | npm run dev not running — run Step 2 |
+| Tunnel connects but /health times out | cron_api.py not running on Linux — run Step 5 |
+| "Connection refused" on /health | cron_api.py stopped — run `nohup python ~/cron_api.py > /dev/null 2>&1 &` |
+| Wrong token error (401) | TOKEN in cron_api.py doesn't match API_TOKEN in CronVisualizer.jsx |
+
+---
+
+*DEPLOYMENT_v2.md · Sprint 5 · 2026-04-23*
