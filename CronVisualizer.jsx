@@ -19,13 +19,13 @@ const DARK = {
   statBg:           (c) => c + "0d",
   headerBorder:     "rgba(34,197,94,0.25)",
   text:             "#e2e8f0",
-  textSub:          "#475569",
-  textMuted:        "#4b5563",
-  textDim:          "#374151",
-  textDimmer:       "#1e293b",
+  textSub:          "#94a3b8",
+  textMuted:        "#64748b",
+  textDim:          "#4b5563",
+  textDimmer:       "#374151",
   green:            "#22c55e",
   amber:            "#f59e0b",
-  blue:             "#0ea5e9",
+  blue:             "#38bdf8",
   red:              "#ef4444",
   slate:            "#94a3b8",
   toggleOff:        "#374151",
@@ -33,7 +33,7 @@ const DARK = {
   dayBtnOff:        "rgba(255,255,255,0.04)",
   dayBtnBorderOff:  "rgba(255,255,255,0.1)",
   scrollThumb:      "#1e293b",
-  footerText:       "#1e293b",
+  footerText:       "#374151",
 };
 
 const LIGHT = {
@@ -263,8 +263,8 @@ function ScheduleEditor({ cronExpression, onSave }) {
   return (
     <div style={{ marginBottom:open?4:8 }}>
       <div onClick={()=>setOpen(o=>!o)} style={{ display:"flex", alignItems:"center", gap:6, cursor:"pointer" }}>
-        <span style={{ color:t.textMuted }}>⏱</span>
-        <span style={{ fontSize:11, fontWeight:600, color:t.textSub, borderBottom:"1px dotted "+t.textDim }}>{parseCron(cronExpression)}</span>
+        <span style={{ color:t.textDim }}>⏱</span>
+        <span style={{ fontSize:11, fontWeight:600, color:t.blue, borderBottom:"1px dotted "+t.blue+"66" }}>{parseCron(cronExpression)}</span>
         <span style={{ fontSize:9, color:open?t.green:t.textDim }}>{open?"▲":"✎"}</span>
       </div>
       {open && <SchedulePicker cronExpression={cronExpression} onSave={cron=>{onSave(cron);setOpen(false);}} onCancel={()=>setOpen(false)} />}
@@ -274,13 +274,14 @@ function ScheduleEditor({ cronExpression, onSave }) {
 
 // ─── EDITABLE FIELD ───────────────────────────────────────────────────────────
 
-function EditableField({ value, onSave, textStyle }) {
+function EditableField({ value, onSave, textStyle, maxLength }) {
   const t = useTheme();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft]     = useState(value);
   const inputRef              = useRef(null);
   useEffect(()=>{ if(editing&&inputRef.current) inputRef.current.focus(); },[editing]);
-  const commit = () => { const v=draft.trim(); if(v&&v!==value) onSave(v); setEditing(false); };
+  const overLimit = maxLength && draft.length > maxLength;
+  const commit = () => { if(overLimit) return; const v=draft.trim(); if(v&&v!==value) onSave(v); setEditing(false); };
   const cancel = () => { setDraft(value); setEditing(false); };
 
   if (!editing) return (
@@ -290,14 +291,21 @@ function EditableField({ value, onSave, textStyle }) {
     </span>
   );
   return (
-    <div style={{ display:"flex", alignItems:"center", gap:6, width:"100%" }}>
-      <input ref={inputRef} value={draft}
-        onChange={e=>setDraft(e.target.value)}
-        onKeyDown={e=>{ if(e.key==="Enter") commit(); if(e.key==="Escape") cancel(); }}
-        style={{ flex:1, background:t.inputBg, border:"1px solid "+t.green+"55", borderRadius:4, color:t.text, fontSize:textStyle?.fontSize||12, fontFamily:"inherit", fontWeight:textStyle?.fontWeight||"normal", padding:"4px 8px", outline:"none", minWidth:0 }}
-      />
-      <button onClick={commit} style={btnStyle(t.green)}>✓</button>
-      <button onClick={cancel} style={btnStyle(t.red)}>✕</button>
+    <div style={{ width:"100%" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+        <input ref={inputRef} value={draft}
+          onChange={e=>setDraft(e.target.value)}
+          onKeyDown={e=>{ if(e.key==="Enter") commit(); if(e.key==="Escape") cancel(); }}
+          style={{ flex:1, background:t.inputBg, border:"1px solid "+(overLimit?t.red:t.green)+"55", borderRadius:4, color:t.text, fontSize:textStyle?.fontSize||12, fontFamily:"inherit", fontWeight:textStyle?.fontWeight||"normal", padding:"4px 8px", outline:"none", minWidth:0 }}
+        />
+        <button onClick={commit} disabled={overLimit} style={btnStyle(t.green, overLimit)}>✓</button>
+        <button onClick={cancel} style={btnStyle(t.red)}>✕</button>
+      </div>
+      {maxLength && (
+        <div style={{ fontSize:8, textAlign:"right", marginTop:2, color:overLimit?t.red:t.textDim }}>
+          {draft.length}/{maxLength}
+        </div>
+      )}
     </div>
   );
 }
@@ -321,19 +329,44 @@ const STATUS_CONFIG = {
   paused: { label:"PAUSED", color:"#f59e0b", pulse:false },
 };
 
+const EXIT_HINTS = {
+  0:"Success", 1:"General error", 2:"Shell misuse", 126:"Permission denied",
+  127:"Command not found", 130:"Terminated (Ctrl+C)", 137:"Killed (OOM/SIGKILL)",
+};
+
 function ExitBadge({ exitCode, hasWrapper }) {
   const t = useTheme();
-  if (!hasWrapper)   return <span style={{ fontSize:9, color:t.textDim, fontStyle:"italic" }}>no wrapper</span>;
+  if (!hasWrapper)   return <span style={{ fontSize:9, color:t.textSub, fontStyle:"italic" }}>no wrapper</span>;
   if (exitCode === null) return <span style={{ fontSize:9, color:t.textDim }}>—</span>;
   const ok = exitCode === 0;
+  const hint = EXIT_HINTS[exitCode] || ("Exit code "+exitCode);
   return (
-    <span style={{ fontSize:9, fontWeight:800, padding:"1px 6px", borderRadius:4, background:(ok?t.green:t.red)+"18", color:ok?t.green:t.red, border:"1px solid "+(ok?t.green:t.red)+"44" }}>
+    <span title={hint} style={{ fontSize:9, fontWeight:800, padding:"1px 6px", borderRadius:4, background:(ok?t.green:t.red)+"18", color:ok?t.green:t.red, border:"1px solid "+(ok?t.green:t.red)+"44", cursor:"help" }}>
       {ok ? "✓ OK" : "✗ ERR "+exitCode}
     </span>
   );
 }
 
-function TaskCard({ task, onToggle, onEdit, onDelete }) {
+function NotesField({ value, onSave }) {
+  const t = useTheme();
+  const [draft, setDraft] = useState(value||"");
+  const dirty = draft !== (value||"");
+  return (
+    <div style={{ marginTop:8 }}>
+      <div style={{ fontSize:8, color:t.textMuted, fontWeight:700, letterSpacing:0.8, marginBottom:3 }}>NOTES</div>
+      <textarea
+        value={draft}
+        onChange={e=>setDraft(e.target.value)}
+        onBlur={()=>{ if(dirty) onSave(draft); }}
+        placeholder="What does this job do? Dependencies, contacts, runbook link..."
+        rows={2}
+        style={{ width:"100%", boxSizing:"border-box", background:t.inputBg, border:"1px solid "+t.inputBorder, borderRadius:4, color:t.text, fontSize:11, fontFamily:"inherit", padding:"5px 8px", outline:"none", resize:"vertical", lineHeight:1.5 }}
+      />
+    </div>
+  );
+}
+
+function TaskCard({ task, onToggle, onEdit, onNotes, onDelete, onRefresh }) {
   const t       = useTheme();
   const scColor = task.enabled ? t.green : t.amber;
   const scLabel = task.enabled ? "ACTIVE" : "PAUSED";
@@ -344,11 +377,12 @@ function TaskCard({ task, onToggle, onEdit, onDelete }) {
 
   const handleFieldSave = async (changes) => {
     const result = await onEdit(task.taskId, changes);
-    setSaveMsg(result === false ? "✗ Save failed — redeploy cron_api.py?" : "✓ Saved");
+    setSaveMsg(result === false ? "✗ Save failed" : "✓ Saved");
     setTimeout(() => setSaveMsg(null), 3000);
+    if (result !== false) onRefresh();
   };
 
-  const labelStyle = { fontSize:8, color:t.textMuted, fontWeight:700, letterSpacing:0.8, marginBottom:3 };
+  const lbl = { fontSize:8, color:t.textMuted, fontWeight:700, letterSpacing:0.8, marginBottom:3 };
 
   return (
     <div style={{ background:t.cardBg, border:"1px solid "+(task.enabled?t.cardBorder:t.cardBorderOff), borderLeft:"3px solid "+scColor, borderRadius:10, padding:"10px 14px", opacity:task.enabled?1:0.65, transition:"opacity 0.2s" }}>
@@ -356,19 +390,18 @@ function TaskCard({ task, onToggle, onEdit, onDelete }) {
       {/* Top row */}
       <div style={{ display:"flex", alignItems:"flex-start", gap:8, marginBottom:8 }}>
         <div style={{ flex:1, minWidth:0 }}>
-          {/* Description label + field */}
-          <div style={labelStyle}>DESCRIPTION</div>
+          <div style={lbl}>DESCRIPTION</div>
           <EditableField
             value={task.description}
             onSave={val=>handleFieldSave({description:val})}
             textStyle={{ fontSize:12, fontWeight:800, color:t.text }}
+            maxLength={80}
           />
-          {/* Command label + field */}
-          <div style={{ ...labelStyle, marginTop:6 }}>COMMAND</div>
+          <div style={{ ...lbl, marginTop:6 }}>COMMAND</div>
           <EditableField
             value={task.command}
             onSave={val=>handleFieldSave({command:val})}
-            textStyle={{ fontSize:11, color:t.text, fontFamily:"monospace" }}
+            textStyle={{ fontSize:11, color:t.blue, fontFamily:"monospace" }}
           />
           {saveMsg && (
             <div style={{ fontSize:9, marginTop:4, color: saveMsg.startsWith("✗") ? t.red : t.green }}>
@@ -387,7 +420,7 @@ function TaskCard({ task, onToggle, onEdit, onDelete }) {
       {/* Schedule */}
       <ScheduleEditor cronExpression={task.cronExpression} onSave={cron=>onEdit(task.taskId,{cronExpression:cron})} />
 
-      {/* Time grid + Delete (3 columns) */}
+      {/* Time grid + Delete */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr auto", gap:8, alignItems:"stretch" }}>
         <div style={{ background:t.inputBg, border:"1px solid "+t.inputBorder, borderRadius:6, padding:"6px 8px" }}>
           <div style={{ fontSize:8, color:t.textMuted, fontWeight:700, letterSpacing:0.8, marginBottom:2 }}>NEXT RUN</div>
@@ -395,7 +428,6 @@ function TaskCard({ task, onToggle, onEdit, onDelete }) {
             {task.enabled ? (nextRel||"—") : "Paused"}
           </div>
         </div>
-
         <div style={{ background:t.inputBg, border:"1px solid "+t.inputBorder, borderRadius:6, padding:"6px 8px" }}>
           <div style={{ fontSize:8, color:t.textMuted, fontWeight:700, letterSpacing:0.8, marginBottom:3 }}>LAST RUN</div>
           <div style={{ display:"flex", alignItems:"center", gap:6 }}>
@@ -403,8 +435,6 @@ function TaskCard({ task, onToggle, onEdit, onDelete }) {
             <ExitBadge exitCode={task.exitCode} hasWrapper={task.hasWrapper} />
           </div>
         </div>
-
-        {/* Delete cell */}
         <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end" }}>
           {confirmDelete ? (
             <div style={{ display:"flex", alignItems:"center", gap:5 }}>
@@ -417,6 +447,9 @@ function TaskCard({ task, onToggle, onEdit, onDelete }) {
           )}
         </div>
       </div>
+
+      {/* Notes */}
+      <NotesField value={task.notes} onSave={text=>onNotes(task.taskId, text)} />
     </div>
   );
 }
@@ -459,15 +492,16 @@ function AddJobForm({ onSave, onCancel }) {
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 
 export default function CronVisualizer() {
-  const [isDark, setIsDark]           = useState(true);
-  const t                             = isDark ? DARK : LIGHT;
-  const [tasks, setTasks]             = useState([]);
-  const [loading, setLoading]         = useState(true);
-  const [error, setError]             = useState(null);
-  const [lastRefresh, setRefresh]     = useState(new Date());
-  const [refreshing, setRefreshing]   = useState(false);
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [, setTick]                   = useState(0);
+  const [isDark, setIsDark]             = useState(true);
+  const t                               = isDark ? DARK : LIGHT;
+  const [tasks, setTasks]               = useState([]);
+  const [loading, setLoading]           = useState(true);
+  const [error, setError]               = useState(null);
+  const [lastRefresh, setRefresh]       = useState(new Date());
+  const [refreshing, setRefreshing]     = useState(false);
+  const [showAddForm, setShowAddForm]   = useState(false);
+  const [hideDisabled, setHideDisabled] = useState(false);
+  const [, setTick]                     = useState(0);
 
   useEffect(()=>{ const iv=setInterval(()=>setTick(n=>n+1),30000); return()=>clearInterval(iv); },[]);
 
@@ -476,7 +510,7 @@ export default function CronVisualizer() {
       const res = await fetch(API_URL+"/crons", { headers:API_HEADERS, cache:"no-store" });
       if (!res.ok) throw new Error("Server returned "+res.status);
       const data = await res.json();
-      setTasks(data.map(e=>({ taskId:String(e.index), index:e.index, description:e.command, command:e.command, cronExpression:e.cronExpression, enabled:e.enabled, nextRunAt:e.nextRunAt||null, lastRunAt:e.lastRunAt||null, exitCode:e.exitCode??null, hasWrapper:e.hasWrapper||false })));
+      setTasks(data.map(e=>({ taskId:String(e.index), index:e.index, description:e.command, command:e.command, cronExpression:e.cronExpression, enabled:e.enabled, nextRunAt:e.nextRunAt||null, lastRunAt:e.lastRunAt||null, exitCode:e.exitCode??null, hasWrapper:e.hasWrapper||false, notes:e.notes||"" })));
       setError(null);
     } catch(err) { setError(err.message); }
   },[]);
@@ -515,6 +549,12 @@ export default function CronVisualizer() {
     }
   },[tasks]);
 
+  const handleNotes = useCallback(async (id, text) => {
+    const task=tasks.find(t=>t.taskId===id); if(!task) return;
+    setTasks(p=>p.map(t=>t.taskId===id?{...t,notes:text}:t));
+    await fetch(API_URL+"/crons/notes",{method:"POST",headers:API_HEADERS,body:JSON.stringify({index:task.index,notes:text})});
+  },[tasks]);
+
   const handleDelete = useCallback(async (id) => {
     const task=tasks.find(t=>t.taskId===id); if(!task) return;
     setTasks(p=>p.filter(t=>t.taskId!==id));
@@ -531,82 +571,92 @@ export default function CronVisualizer() {
     } catch(err) { alert("Failed to add job: "+err.message); }
   },[fetchTasks]);
 
-  const active=tasks.filter(t=>t.enabled).length, paused=tasks.filter(t=>!t.enabled).length;
+  const active      = tasks.filter(t=>t.enabled).length;
+  const paused      = tasks.filter(t=>!t.enabled).length;
+  const visibleTasks = hideDisabled ? tasks.filter(t=>t.enabled) : tasks;
 
   return (
     <ThemeCtx.Provider value={t}>
-      <div style={{ fontFamily:"'JetBrains Mono','Fira Code','Courier New',monospace", background:t.bg, color:t.text, minHeight:"100vh", padding:"12px", fontSize:12, transition:"background 0.2s, color 0.2s" }}>
+      <div style={{ fontFamily:"'JetBrains Mono','Fira Code','Courier New',monospace", background:t.bg, color:t.text, height:"100vh", display:"flex", flexDirection:"column", fontSize:12, transition:"background 0.2s, color 0.2s" }}>
 
-        {/* Header */}
-        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14, borderBottom:"1px solid "+t.headerBorder, paddingBottom:10, flexWrap:"wrap" }}>
-          <div style={{ width:10, height:10, borderRadius:"50%", background:t.green, boxShadow:"0 0 10px "+t.green, animation:"pulse 2s infinite", flexShrink:0 }} />
-          <span style={{ fontSize:14, fontWeight:800, color:t.green, letterSpacing:2 }}>CRON VISUALIZER</span>
-          <span style={{ fontSize:9, fontWeight:700, padding:"2px 8px", borderRadius:4, background:t.green+"22", color:t.green, border:"1px solid "+t.green+"44" }}>{active} ACTIVE</span>
-          {paused>0&&<span style={{ fontSize:9, fontWeight:700, padding:"2px 8px", borderRadius:4, background:t.amber+"22", color:t.amber, border:"1px solid "+t.amber+"44" }}>{paused} PAUSED</span>}
+        {/* Sticky header */}
+        <div style={{ flexShrink:0, background:t.bg, padding:"12px 12px 10px", borderBottom:"1px solid "+t.headerBorder, zIndex:10 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+            <div style={{ width:10, height:10, borderRadius:"50%", background:t.green, boxShadow:"0 0 10px "+t.green, animation:"pulse 2s infinite", flexShrink:0 }} />
+            <span style={{ fontSize:14, fontWeight:800, color:t.green, letterSpacing:2 }}>CRON VISUALIZER</span>
+            <span style={{ fontSize:9, fontWeight:700, padding:"2px 8px", borderRadius:4, background:t.green+"22", color:t.green, border:"1px solid "+t.green+"44" }}>{active} ACTIVE</span>
+            {paused>0&&<span style={{ fontSize:9, fontWeight:700, padding:"2px 8px", borderRadius:4, background:t.amber+"22", color:t.amber, border:"1px solid "+t.amber+"44" }}>{paused} PAUSED</span>}
 
-          <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:8 }}>
-            {/* Light/Dark toggle */}
-            <div onClick={()=>setIsDark(d=>!d)} title={isDark?"Switch to light mode":"Switch to dark mode"}
-              style={{ display:"flex", alignItems:"center", gap:5, cursor:"pointer", fontSize:10, color:t.slate, padding:"3px 8px", borderRadius:4, border:"1px solid "+t.inputBorder, background:t.inputBg, userSelect:"none" }}>
-              <span>{isDark?"☀":"🌙"}</span>
-              <span style={{ fontWeight:700, letterSpacing:0.5 }}>{isDark?"LIGHT":"DARK"}</span>
+            <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+              <div onClick={()=>setIsDark(d=>!d)} title={isDark?"Switch to light mode":"Switch to dark mode"}
+                style={{ display:"flex", alignItems:"center", gap:5, cursor:"pointer", fontSize:10, color:t.slate, padding:"3px 8px", borderRadius:4, border:"1px solid "+t.inputBorder, background:t.inputBg, userSelect:"none" }}>
+                <span>{isDark?"☀":"🌙"}</span>
+                <span style={{ fontWeight:700, letterSpacing:0.5 }}>{isDark?"LIGHT":"DARK"}</span>
+              </div>
+              <button onClick={()=>setHideDisabled(h=>!h)} style={{ fontSize:9, fontWeight:700, padding:"3px 10px", borderRadius:4, background:hideDisabled?t.amber+"25":t.inputBg, border:"1px solid "+(hideDisabled?t.amber+"55":t.inputBorder), color:hideDisabled?t.amber:t.slate, cursor:"pointer", letterSpacing:0.5 }}>
+                {hideDisabled?"SHOW ALL":"HIDE PAUSED"}
+              </button>
+              <button onClick={()=>setShowAddForm(s=>!s)} style={{ fontSize:9, fontWeight:700, padding:"3px 10px", borderRadius:4, background:showAddForm?t.green+"25":t.green+"0d", border:"1px solid "+t.green+"44", color:t.green, cursor:"pointer", letterSpacing:0.5 }}>
+                {showAddForm?"✕ CANCEL":"+ ADD JOB"}
+              </button>
+              <span style={{ fontSize:9, color:t.textDim }}>{new Date(lastRefresh).toLocaleTimeString()}</span>
+              <button onClick={handleRefresh} disabled={refreshing} style={{ fontSize:9, fontWeight:700, padding:"3px 10px", borderRadius:4, background:t.inputBg, border:"1px solid "+t.inputBorder, color:refreshing?t.textMuted:t.slate, cursor:refreshing?"wait":"pointer", letterSpacing:0.5 }}>
+                {refreshing?"⟳ REFRESHING...":"⟳ REFRESH"}
+              </button>
             </div>
-
-            <button onClick={()=>setShowAddForm(s=>!s)} style={{ fontSize:9, fontWeight:700, padding:"3px 10px", borderRadius:4, background:showAddForm?t.green+"25":t.green+"0d", border:"1px solid "+t.green+"44", color:t.green, cursor:"pointer", letterSpacing:0.5 }}>
-              {showAddForm?"✕ CANCEL":"+ ADD JOB"}
-            </button>
-            <span style={{ fontSize:9, color:t.textDim }}>{new Date(lastRefresh).toLocaleTimeString()}</span>
-            <button onClick={handleRefresh} disabled={refreshing} style={{ fontSize:9, fontWeight:700, padding:"3px 10px", borderRadius:4, background:t.inputBg, border:"1px solid "+t.inputBorder, color:refreshing?t.textMuted:t.slate, cursor:refreshing?"wait":"pointer", letterSpacing:0.5 }}>
-              {refreshing?"⟳ REFRESHING...":"⟳ REFRESH"}
-            </button>
           </div>
         </div>
 
-        {/* Error banner */}
-        {error && (
-          <div style={{ marginBottom:14, padding:"10px 14px", borderRadius:8, background:t.red+"12", border:"1px solid "+t.red+"44", color:t.red, fontSize:11, display:"flex", alignItems:"center", gap:8 }}>
-            <span>⚠</span><span>Cannot reach server — {error}</span>
-            <span style={{ fontSize:9, color:t.slate, marginLeft:"auto" }}>Is the SSH tunnel running? Is cron_api.py running?</span>
-          </div>
-        )}
+        {/* Scrollable content */}
+        <div style={{ flex:1, overflowY:"auto", padding:"12px" }}>
 
-        {/* Stats */}
-        {!loading&&!error&&(
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, marginBottom:14 }}>
-            {[{label:"Total Jobs",value:tasks.length,color:t.blue},{label:"Active",value:active,color:t.green},{label:"Paused",value:paused,color:t.amber}].map(({label,value,color})=>(
-              <div key={label} style={{ background:t.statBg(color), border:"1px solid "+t.statBorder(color), borderRadius:8, padding:"8px 12px", textAlign:"center" }}>
-                <div style={{ fontSize:20, fontWeight:800, color }}>{value}</div>
-                <div style={{ fontSize:9, color:t.textMuted, fontWeight:700, letterSpacing:0.5, marginTop:2 }}>{label.toUpperCase()}</div>
+          {/* Error banner */}
+          {error && (
+            <div style={{ marginBottom:14, padding:"10px 14px", borderRadius:8, background:t.red+"12", border:"1px solid "+t.red+"44", color:t.red, fontSize:11, display:"flex", alignItems:"center", gap:8 }}>
+              <span>⚠</span><span>Cannot reach server — {error}</span>
+              <span style={{ fontSize:9, color:t.slate, marginLeft:"auto" }}>Is the SSH tunnel running? Is cron_api.py running?</span>
+            </div>
+          )}
+
+          {/* Stats */}
+          {!loading&&!error&&(
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, marginBottom:14 }}>
+              {[{label:"Total Jobs",value:tasks.length,color:t.blue},{label:"Active",value:active,color:t.green},{label:"Paused",value:paused,color:t.amber}].map(({label,value,color})=>(
+                <div key={label} style={{ background:t.statBg(color), border:"1px solid "+t.statBorder(color), borderRadius:8, padding:"8px 12px", textAlign:"center" }}>
+                  <div style={{ fontSize:20, fontWeight:800, color }}>{value}</div>
+                  <div style={{ fontSize:9, color:t.textMuted, fontWeight:700, letterSpacing:0.5, marginTop:2 }}>{label.toUpperCase()}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add form */}
+          {showAddForm&&<AddJobForm onSave={handleAdd} onCancel={()=>setShowAddForm(false)} />}
+
+          {/* Cards */}
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            {loading ? (
+              <div style={{ textAlign:"center", padding:"40px 20px", color:t.textDim }}>
+                <div style={{ fontSize:20, marginBottom:8, animation:"pulse 1s infinite" }}>⟳</div>
+                <div style={{ fontSize:11 }}>Connecting to {API_URL}...</div>
               </div>
+            ) : visibleTasks.length===0&&!error ? (
+              <div style={{ textAlign:"center", padding:"40px 20px", background:t.cardBg, border:"1px solid "+t.cardBorder, borderRadius:10, color:t.textDim }}>
+                <div style={{ fontSize:28, marginBottom:8 }}>📭</div>
+                <div style={{ fontSize:12 }}>{hideDisabled?"No active jobs":"No cron jobs found"}</div>
+                <div style={{ fontSize:10, marginTop:4 }}>{hideDisabled?"Toggle SHOW ALL to see paused jobs":"Use + ADD JOB to create one"}</div>
+              </div>
+            ) : visibleTasks.map(task=>(
+              <TaskCard key={task.taskId} task={task} onToggle={handleToggle} onEdit={handleEdit} onNotes={handleNotes} onDelete={handleDelete} onRefresh={handleRefresh} />
             ))}
           </div>
-        )}
 
-        {/* Add form */}
-        {showAddForm&&<AddJobForm onSave={handleAdd} onCancel={()=>setShowAddForm(false)} />}
+          {/* Footer */}
+          <div style={{ marginTop:14, paddingTop:10, borderTop:"1px solid "+t.inputBorder, display:"flex", justifyContent:"space-between", fontSize:9, color:t.footerText }}>
+            <span>CRON VISUALIZER · SPRINT 6</span>
+            <span>{API_URL} · {new Date().toLocaleDateString()}</span>
+          </div>
 
-        {/* Cards */}
-        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-          {loading ? (
-            <div style={{ textAlign:"center", padding:"40px 20px", color:t.textDim }}>
-              <div style={{ fontSize:20, marginBottom:8, animation:"pulse 1s infinite" }}>⟳</div>
-              <div style={{ fontSize:11 }}>Connecting to {API_URL}...</div>
-            </div>
-          ) : tasks.length===0&&!error ? (
-            <div style={{ textAlign:"center", padding:"40px 20px", background:t.cardBg, border:"1px solid "+t.cardBorder, borderRadius:10, color:t.textDim }}>
-              <div style={{ fontSize:28, marginBottom:8 }}>📭</div>
-              <div style={{ fontSize:12 }}>No cron jobs found</div>
-              <div style={{ fontSize:10, marginTop:4 }}>Use + ADD JOB to create one</div>
-            </div>
-          ) : tasks.map(task=>(
-            <TaskCard key={task.taskId} task={task} onToggle={handleToggle} onEdit={handleEdit} onDelete={handleDelete} />
-          ))}
-        </div>
-
-        {/* Footer */}
-        <div style={{ marginTop:14, paddingTop:10, borderTop:"1px solid "+t.inputBorder, display:"flex", justifyContent:"space-between", fontSize:9, color:t.footerText }}>
-          <span>CRON VISUALIZER · SPRINT 5</span>
-          <span>{API_URL} · {new Date().toLocaleDateString()}</span>
         </div>
 
         <style>{`
@@ -616,6 +666,8 @@ export default function CronVisualizer() {
           button:hover:not(:disabled) { filter:brightness(1.15) }
           select option { background:${t.bg} }
           input::placeholder { color:${t.textDim} }
+          textarea::placeholder { color:${t.textDim} }
+          textarea { color-scheme: ${isDark?"dark":"light"} }
         `}</style>
       </div>
     </ThemeCtx.Provider>

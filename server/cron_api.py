@@ -19,9 +19,27 @@ from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 PORT       = 8765
-TOKEN      = "CHANGE_ME_BEFORE_DEPLOY"
 CRON_LOG   = "/var/log/cron"
 STATUS_DIR = os.path.expanduser("~/.cron_status")
+NOTES_DIR  = os.path.expanduser("~/.cron_notes")
+CONF_FILE  = os.path.expanduser("~/.cron_api.conf")
+
+def load_conf():
+    """Load KEY=VALUE pairs from ~/.cron_api.conf."""
+    conf = {}
+    try:
+        with open(CONF_FILE, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    conf[k.strip()] = v.strip()
+    except IOError:
+        pass
+    return conf
+
+_conf  = load_conf()
+TOKEN  = _conf.get("TOKEN", "CHANGE_ME_BEFORE_DEPLOY")
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -214,10 +232,33 @@ def next_run_time(expr):
     return None
 
 
+# ── NOTES ────────────────────────────────────────────────────────────────────
+
+def notes_path(command):
+    parts = command.split(None, 1)
+    lookup = parts[1] if len(parts) == 2 and "cronwrap" in parts[0] else command
+    return os.path.join(NOTES_DIR, job_id(lookup) + ".txt")
+
+def get_notes(command):
+    try:
+        with open(notes_path(command), "r") as f:
+            return f.read()
+    except Exception:
+        return ""
+
+def save_notes(command, text):
+    try:
+        with open(notes_path(command), "w") as f:
+            f.write(text)
+        return True
+    except Exception:
+        return False
+
+
 # ── ENRICH ENTRY ──────────────────────────────────────────────────────────────
 
 def enrich(entry):
-    """Add lastRunAt, nextRunAt, exitCode, hasWrapper to a cron entry dict."""
+    """Add lastRunAt, nextRunAt, exitCode, hasWrapper, notes to a cron entry dict."""
     cmd    = entry["command"]
     status = get_job_status(cmd)
 
@@ -226,7 +267,6 @@ def enrich(entry):
         exit_code = status.get("exit_code")
         has_wrapper = True
     else:
-        # Fall back to /var/log/cron (timestamp only, no exit code)
         last_run    = get_last_run_from_log(cmd)
         exit_code   = None
         has_wrapper = False
@@ -235,6 +275,7 @@ def enrich(entry):
     entry["nextRunAt"]   = next_run_time(entry["cronExpression"]) if entry["enabled"] else None
     entry["exitCode"]    = exit_code
     entry["hasWrapper"]  = has_wrapper
+    entry["notes"]       = get_notes(cmd)
     return entry
 
 
@@ -331,6 +372,16 @@ class CronHandler(BaseHTTPRequestHandler):
             ok, err = write_crontab(lines)
             self.send_json(200 if ok else 500, {"ok": ok, "error": err})
 
+        elif self.path == "/crons/notes":
+            idx  = body.get("index")
+            text = body.get("notes", "")
+            entries, _ = read_crontab()
+            entry = next((e for e in entries if e["index"] == idx), None)
+            if entry is None:
+                self.send_json(404, {"error": "entry not found"}); return
+            ok = save_notes(entry["command"], text)
+            self.send_json(200 if ok else 500, {"ok": ok})
+
         elif self.path == "/crons/add":
             expr    = body.get("cronExpression", "").strip()
             command = body.get("command", "").strip()
@@ -346,8 +397,13 @@ class CronHandler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    if not os.path.exists(STATUS_DIR):
-        os.makedirs(STATUS_DIR)
+    for d in (STATUS_DIR, NOTES_DIR):
+        if not os.path.exists(d):
+            os.makedirs(d)
+    if TOKEN == "CHANGE_ME_BEFORE_DEPLOY":
+        print("WARNING: TOKEN not set. Create %s with TOKEN=your_secret" % CONF_FILE)
+    else:
+        print("Config loaded from %s" % CONF_FILE)
     server = HTTPServer(("0.0.0.0", PORT), CronHandler)
     print("Cron API listening on port %d" % PORT)
     try:
