@@ -38,8 +38,9 @@ def load_conf():
         pass
     return conf
 
-_conf  = load_conf()
-TOKEN  = _conf.get("TOKEN", "CHANGE_ME_BEFORE_DEPLOY")
+_conf       = load_conf()
+TOKEN       = _conf.get("TOKEN", "CHANGE_ME_BEFORE_DEPLOY")
+SERVER_NAME = _conf.get("SERVER_NAME", "")
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -318,6 +319,14 @@ class CronHandler(BaseHTTPRequestHandler):
             return
         if not self.authed():
             self.send_json(401, {"error": "unauthorized"})
+            return
+        if self.path == "/info":
+            import socket
+            hostname = socket.gethostname()
+            self.send_json(200, {
+                "serverName": SERVER_NAME if SERVER_NAME else hostname,
+                "hostname":   hostname,
+            })
             return
         if self.path == "/crons":
             entries, _ = read_crontab()

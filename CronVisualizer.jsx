@@ -263,9 +263,9 @@ function ScheduleEditor({ cronExpression, onSave }) {
   return (
     <div style={{ marginBottom:open?4:8 }}>
       <div onClick={()=>setOpen(o=>!o)} style={{ display:"flex", alignItems:"center", gap:6, cursor:"pointer" }}>
-        <span style={{ color:t.textDim }}>⏱</span>
+        <span style={{ color:t.blue, fontSize:13 }}>⏱</span>
         <span style={{ fontSize:11, fontWeight:600, color:t.blue, borderBottom:"1px dotted "+t.blue+"66" }}>{parseCron(cronExpression)}</span>
-        <span style={{ fontSize:9, color:open?t.green:t.textDim }}>{open?"▲":"✎"}</span>
+        <span style={{ fontSize:9, color:open?t.green:t.textMuted }}>{open?"▲":"✎"}</span>
       </div>
       {open && <SchedulePicker cronExpression={cronExpression} onSave={cron=>{onSave(cron);setOpen(false);}} onCancel={()=>setOpen(false)} />}
     </div>
@@ -330,8 +330,13 @@ const STATUS_CONFIG = {
 };
 
 const EXIT_HINTS = {
-  0:"Success", 1:"General error", 2:"Shell misuse", 126:"Permission denied",
-  127:"Command not found", 130:"Terminated (Ctrl+C)", 137:"Killed (OOM/SIGKILL)",
+  0:"Exit 0: Success",
+  1:"Exit 1: General error",
+  2:"Exit 2: Shell misuse",
+  126:"Exit 126: Permission denied",
+  127:"Exit 127: Command not found",
+  130:"Exit 130: Terminated (Ctrl+C)",
+  137:"Exit 137: Killed (OOM/SIGKILL)",
 };
 
 function ExitBadge({ exitCode, hasWrapper }) {
@@ -339,7 +344,7 @@ function ExitBadge({ exitCode, hasWrapper }) {
   if (!hasWrapper)   return <span style={{ fontSize:9, color:t.textSub, fontStyle:"italic" }}>no wrapper</span>;
   if (exitCode === null) return <span style={{ fontSize:9, color:t.textDim }}>—</span>;
   const ok = exitCode === 0;
-  const hint = EXIT_HINTS[exitCode] || ("Exit code "+exitCode);
+  const hint = EXIT_HINTS[exitCode] || ("Exit "+exitCode+": Unknown");
   return (
     <span title={hint} style={{ fontSize:9, fontWeight:800, padding:"1px 6px", borderRadius:4, background:(ok?t.green:t.red)+"18", color:ok?t.green:t.red, border:"1px solid "+(ok?t.green:t.red)+"44", cursor:"help" }}>
       {ok ? "✓ OK" : "✗ ERR "+exitCode}
@@ -350,17 +355,31 @@ function ExitBadge({ exitCode, hasWrapper }) {
 function NotesField({ value, onSave }) {
   const t = useTheme();
   const [draft, setDraft] = useState(value||"");
+  const [status, setStatus] = useState(null);
   const dirty = draft !== (value||"");
+
+  const handleBlur = async () => {
+    if (!dirty) return;
+    await onSave(draft);
+    setStatus("✓ Saved");
+    setTimeout(()=>setStatus(null), 2000);
+  };
+
   return (
     <div style={{ marginTop:8 }}>
-      <div style={{ fontSize:8, color:t.textMuted, fontWeight:700, letterSpacing:0.8, marginBottom:3 }}>NOTES</div>
+      <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:3 }}>
+        <span style={{ fontSize:8, color:t.textMuted, fontWeight:700, letterSpacing:0.8 }}>NOTES</span>
+        {dirty && !status && <span style={{ fontSize:8, color:t.amber }}>● unsaved</span>}
+        {status && <span style={{ fontSize:8, color:t.green }}>{status}</span>}
+        <span style={{ fontSize:8, color:t.textDim, marginLeft:"auto" }}>click away to save</span>
+      </div>
       <textarea
         value={draft}
         onChange={e=>setDraft(e.target.value)}
-        onBlur={()=>{ if(dirty) onSave(draft); }}
+        onBlur={handleBlur}
         placeholder="What does this job do? Dependencies, contacts, runbook link..."
         rows={2}
-        style={{ width:"100%", boxSizing:"border-box", background:t.inputBg, border:"1px solid "+t.inputBorder, borderRadius:4, color:t.text, fontSize:11, fontFamily:"inherit", padding:"5px 8px", outline:"none", resize:"vertical", lineHeight:1.5 }}
+        style={{ width:"100%", boxSizing:"border-box", background:t.inputBg, border:"1px solid "+(dirty?t.amber+"66":t.inputBorder), borderRadius:4, color:t.text, fontSize:11, fontFamily:"inherit", padding:"5px 8px", outline:"none", resize:"vertical", lineHeight:1.5 }}
       />
     </div>
   );
@@ -501,6 +520,7 @@ export default function CronVisualizer() {
   const [refreshing, setRefreshing]     = useState(false);
   const [showAddForm, setShowAddForm]   = useState(false);
   const [hideDisabled, setHideDisabled] = useState(false);
+  const [serverName, setServerName]     = useState("");
   const [, setTick]                     = useState(0);
 
   useEffect(()=>{ const iv=setInterval(()=>setTick(n=>n+1),30000); return()=>clearInterval(iv); },[]);
@@ -515,7 +535,11 @@ export default function CronVisualizer() {
     } catch(err) { setError(err.message); }
   },[]);
 
-  useEffect(()=>{ fetchTasks().then(()=>setLoading(false)); },[fetchTasks]);
+  useEffect(()=>{
+    fetch(API_URL+"/info",{headers:API_HEADERS,cache:"no-store"})
+      .then(r=>r.json()).then(d=>setServerName(d.serverName||"")).catch(()=>{});
+    fetchTasks().then(()=>setLoading(false));
+  },[fetchTasks]);
 
   const handleRefresh = useCallback(()=>{
     setRefreshing(true);
@@ -584,6 +608,7 @@ export default function CronVisualizer() {
           <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
             <div style={{ width:10, height:10, borderRadius:"50%", background:t.green, boxShadow:"0 0 10px "+t.green, animation:"pulse 2s infinite", flexShrink:0 }} />
             <span style={{ fontSize:14, fontWeight:800, color:t.green, letterSpacing:2 }}>CRON VISUALIZER</span>
+            {serverName && <span style={{ fontSize:9, fontWeight:700, padding:"2px 8px", borderRadius:4, background:t.blue+"18", color:t.blue, border:"1px solid "+t.blue+"44" }}>{serverName}</span>}
             <span style={{ fontSize:9, fontWeight:700, padding:"2px 8px", borderRadius:4, background:t.green+"22", color:t.green, border:"1px solid "+t.green+"44" }}>{active} ACTIVE</span>
             {paused>0&&<span style={{ fontSize:9, fontWeight:700, padding:"2px 8px", borderRadius:4, background:t.amber+"22", color:t.amber, border:"1px solid "+t.amber+"44" }}>{paused} PAUSED</span>}
 
