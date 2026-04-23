@@ -340,24 +340,48 @@ function TaskCard({ task, onToggle, onEdit, onDelete }) {
   const nextRel = relativeTime(task.nextRunAt);
   const lastRel = task.lastRunAt ? relativeTime(task.lastRunAt) : null;
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [saveMsg, setSaveMsg]             = useState(null);
+
+  const handleFieldSave = async (changes) => {
+    const result = await onEdit(task.taskId, changes);
+    setSaveMsg(result === false ? "✗ Save failed — redeploy cron_api.py?" : "✓ Saved");
+    setTimeout(() => setSaveMsg(null), 3000);
+  };
+
+  const labelStyle = { fontSize:8, color:t.textMuted, fontWeight:700, letterSpacing:0.8, marginBottom:3 };
 
   return (
     <div style={{ background:t.cardBg, border:"1px solid "+(task.enabled?t.cardBorder:t.cardBorderOff), borderLeft:"3px solid "+scColor, borderRadius:10, padding:"10px 14px", opacity:task.enabled?1:0.65, transition:"opacity 0.2s" }}>
 
       {/* Top row */}
-      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+      <div style={{ display:"flex", alignItems:"flex-start", gap:8, marginBottom:8 }}>
         <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ fontSize:12, fontWeight:800, color:t.text, marginBottom:2 }}>{task.description}</div>
+          {/* Description label + field */}
+          <div style={labelStyle}>DESCRIPTION</div>
+          <EditableField
+            value={task.description}
+            onSave={val=>handleFieldSave({description:val})}
+            textStyle={{ fontSize:12, fontWeight:800, color:t.text }}
+          />
+          {/* Command label + field */}
+          <div style={{ ...labelStyle, marginTop:6 }}>COMMAND</div>
           <EditableField
             value={task.command}
-            onSave={val=>onEdit(task.taskId,{command:val})}
-            textStyle={{ fontSize:9, color:t.textSub, fontFamily:"monospace" }}
+            onSave={val=>handleFieldSave({command:val})}
+            textStyle={{ fontSize:11, color:t.text, fontFamily:"monospace" }}
           />
+          {saveMsg && (
+            <div style={{ fontSize:9, marginTop:4, color: saveMsg.startsWith("✗") ? t.red : t.green }}>
+              {saveMsg}
+            </div>
+          )}
         </div>
-        <div style={{ fontSize:8, fontWeight:700, padding:"2px 8px", borderRadius:10, whiteSpace:"nowrap", background:scColor+"18", color:scColor, border:"1px solid "+scColor+"44", animation:task.enabled?"pulse 2s infinite":"none" }}>
-          {task.enabled&&<span style={{ marginRight:3 }}>●</span>}{scLabel}
+        <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:6, flexShrink:0 }}>
+          <div style={{ fontSize:8, fontWeight:700, padding:"2px 8px", borderRadius:10, whiteSpace:"nowrap", background:scColor+"18", color:scColor, border:"1px solid "+scColor+"44", animation:task.enabled?"pulse 2s infinite":"none" }}>
+            {task.enabled&&<span style={{ marginRight:3 }}>●</span>}{scLabel}
+          </div>
+          <Toggle enabled={task.enabled} onChange={()=>onToggle(task.taskId)} />
         </div>
-        <Toggle enabled={task.enabled} onChange={()=>onToggle(task.taskId)} />
       </div>
 
       {/* Schedule */}
@@ -452,7 +476,7 @@ export default function CronVisualizer() {
       const res = await fetch(API_URL+"/crons", { headers:API_HEADERS });
       if (!res.ok) throw new Error("Server returned "+res.status);
       const data = await res.json();
-      setTasks(data.map(e=>({ taskId:String(e.index), index:e.index, description:e.command, command:e.command, cronExpression:e.cronExpression, enabled:e.enabled, nextRunAt:null, lastRunAt:null })));
+      setTasks(data.map(e=>({ taskId:String(e.index), index:e.index, description:e.command, command:e.command, cronExpression:e.cronExpression, enabled:e.enabled, nextRunAt:e.nextRunAt||null, lastRunAt:e.lastRunAt||null, exitCode:e.exitCode??null, hasWrapper:e.hasWrapper||false })));
       setError(null);
     } catch(err) { setError(err.message); }
   },[]);
@@ -483,8 +507,10 @@ export default function CronVisualizer() {
         if (changes.command)        payload.command        = changes.command;
         const res=await fetch(API_URL+"/crons/update",{method:"POST",headers:API_HEADERS,body:JSON.stringify(payload)});
         if(!res.ok) throw new Error();
+        return true;
       } catch {
         setTasks(p=>p.map(t=>t.taskId===id?{...t,...task}:t));
+        return false;
       }
     }
   },[tasks]);
