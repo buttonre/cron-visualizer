@@ -347,12 +347,12 @@ function TaskCard({ task, onToggle, onEdit, onDelete }) {
       {/* Top row */}
       <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
         <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ fontSize:12, fontWeight:800, color:t.text, marginBottom:2 }}>{task.description}</div>
           <EditableField
-            value={task.description}
-            onSave={val=>onEdit(task.taskId,{description:val})}
-            textStyle={{ fontSize:12, fontWeight:800, color:t.text }}
+            value={task.command}
+            onSave={val=>onEdit(task.taskId,{command:val})}
+            textStyle={{ fontSize:9, color:t.textSub, fontFamily:"monospace" }}
           />
-          <div style={{ fontSize:9, color:t.textSub, marginTop:2, fontFamily:"monospace", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{task.command}</div>
         </div>
         <div style={{ fontSize:8, fontWeight:700, padding:"2px 8px", borderRadius:10, whiteSpace:"nowrap", background:scColor+"18", color:scColor, border:"1px solid "+scColor+"44", animation:task.enabled?"pulse 2s infinite":"none" }}>
           {task.enabled&&<span style={{ marginRight:3 }}>●</span>}{scLabel}
@@ -476,11 +476,16 @@ export default function CronVisualizer() {
   const handleEdit = useCallback(async (id, changes) => {
     const task=tasks.find(t=>t.taskId===id); if(!task) return;
     setTasks(p=>p.map(t=>t.taskId===id?{...t,...changes}:t));
-    if (changes.cronExpression) {
+    if (changes.cronExpression || changes.command) {
       try {
-        const res=await fetch(API_URL+"/crons/update",{method:"POST",headers:API_HEADERS,body:JSON.stringify({index:task.index,cronExpression:changes.cronExpression})});
+        const payload = { index: task.index };
+        if (changes.cronExpression) payload.cronExpression = changes.cronExpression;
+        if (changes.command)        payload.command        = changes.command;
+        const res=await fetch(API_URL+"/crons/update",{method:"POST",headers:API_HEADERS,body:JSON.stringify(payload)});
         if(!res.ok) throw new Error();
-      } catch { setTasks(p=>p.map(t=>t.taskId===id?{...t,cronExpression:task.cronExpression}:t)); }
+      } catch {
+        setTasks(p=>p.map(t=>t.taskId===id?{...t,...task}:t));
+      }
     }
   },[tasks]);
 

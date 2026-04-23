@@ -293,11 +293,14 @@ class CronHandler(BaseHTTPRequestHandler):
         elif self.path == "/crons/update":
             idx      = body.get("index")
             new_expr = body.get("cronExpression", "").strip()
+            new_cmd  = body.get("command", "").strip()
             entries, lines = read_crontab()
             entry = next((e for e in entries if e["index"] == idx), None)
             if entry is None:
                 self.send_json(404, {"error": "entry not found"}); return
-            new_line = new_expr + " " + entry["command"]
+            expr = new_expr if new_expr else entry["cronExpression"]
+            cmd  = new_cmd  if new_cmd  else entry["command"]
+            new_line = expr + " " + cmd
             if not entry["enabled"]:
                 new_line = "# " + new_line
             lines[idx] = new_line
