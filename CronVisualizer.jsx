@@ -354,23 +354,25 @@ function ExitBadge({ exitCode, hasWrapper }) {
 
 function NotesField({ value, onSave }) {
   const t = useTheme();
-  const [draft, setDraft] = useState(value||"");
-  const [status, setStatus] = useState(null);
-  const dirty = draft !== (value||"");
+  const [draft, setDraft]   = useState(value||"");
+  const [saved, setSaved]   = useState(false);
+  const savedRef            = useRef(value||"");
+  const dirty               = draft !== savedRef.current;
 
   const handleBlur = async () => {
     if (!dirty) return;
     await onSave(draft);
-    setStatus("✓ Saved");
-    setTimeout(()=>setStatus(null), 2000);
+    savedRef.current = draft;
+    setSaved(true);
+    setTimeout(()=>setSaved(false), 2000);
   };
 
   return (
     <div style={{ marginTop:8 }}>
       <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:3 }}>
         <span style={{ fontSize:8, color:t.textMuted, fontWeight:700, letterSpacing:0.8 }}>NOTES</span>
-        {dirty && !status && <span style={{ fontSize:8, color:t.amber }}>● unsaved</span>}
-        {status && <span style={{ fontSize:8, color:t.green }}>{status}</span>}
+        {dirty  && <span style={{ fontSize:8, color:t.amber }}>● unsaved</span>}
+        {!dirty && saved && <span style={{ fontSize:8, color:t.green }}>✓ Saved</span>}
         <span style={{ fontSize:8, color:t.textDim, marginLeft:"auto" }}>click away to save</span>
       </div>
       <textarea
@@ -530,7 +532,7 @@ export default function CronVisualizer() {
       const res = await fetch(API_URL+"/crons", { headers:API_HEADERS, cache:"no-store" });
       if (!res.ok) throw new Error("Server returned "+res.status);
       const data = await res.json();
-      setTasks(data.map(e=>({ taskId:String(e.index), index:e.index, description:e.command, command:e.command, cronExpression:e.cronExpression, enabled:e.enabled, nextRunAt:e.nextRunAt||null, lastRunAt:e.lastRunAt||null, exitCode:e.exitCode??null, hasWrapper:e.hasWrapper||false, notes:e.notes||"" })));
+      setTasks(data.map(e=>({ taskId:String(e.index), index:e.index, description:e.description||e.command, command:e.command, cronExpression:e.cronExpression, enabled:e.enabled, nextRunAt:e.nextRunAt||null, lastRunAt:e.lastRunAt||null, exitCode:e.exitCode??null, hasWrapper:e.hasWrapper||false, notes:e.notes||"" })));
       setError(null);
     } catch(err) { setError(err.message); }
   },[]);
@@ -558,6 +560,16 @@ export default function CronVisualizer() {
   const handleEdit = useCallback(async (id, changes) => {
     const task=tasks.find(t=>t.taskId===id); if(!task) return;
     setTasks(p=>p.map(t=>t.taskId===id?{...t,...changes}:t));
+    if (changes.description) {
+      try {
+        const res=await fetch(API_URL+"/crons/description",{method:"POST",headers:API_HEADERS,body:JSON.stringify({index:task.index,description:changes.description})});
+        if(!res.ok) throw new Error();
+        return true;
+      } catch {
+        setTasks(p=>p.map(t=>t.taskId===id?{...t,...task}:t));
+        return false;
+      }
+    }
     if (changes.cronExpression || changes.command) {
       try {
         const payload = { index: task.index };
@@ -607,8 +619,10 @@ export default function CronVisualizer() {
         <div style={{ flexShrink:0, background:t.bg, padding:"12px 12px 10px", borderBottom:"1px solid "+t.headerBorder, zIndex:10 }}>
           <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
             <div style={{ width:10, height:10, borderRadius:"50%", background:t.green, boxShadow:"0 0 10px "+t.green, animation:"pulse 2s infinite", flexShrink:0 }} />
-            <span style={{ fontSize:14, fontWeight:800, color:t.green, letterSpacing:2 }}>CRON VISUALIZER</span>
-            {serverName && <span style={{ fontSize:9, fontWeight:700, padding:"2px 8px", borderRadius:4, background:t.blue+"18", color:t.blue, border:"1px solid "+t.blue+"44" }}>{serverName}</span>}
+            <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
+              <span style={{ fontSize:14, fontWeight:800, color:t.green, letterSpacing:2 }}>CRON VISUALIZER</span>
+              {serverName && <span style={{ fontSize:11, fontWeight:600, color:t.blue, letterSpacing:0.5 }}>Server: {serverName}</span>}
+            </div>
             <span style={{ fontSize:9, fontWeight:700, padding:"2px 8px", borderRadius:4, background:t.green+"22", color:t.green, border:"1px solid "+t.green+"44" }}>{active} ACTIVE</span>
             {paused>0&&<span style={{ fontSize:9, fontWeight:700, padding:"2px 8px", borderRadius:4, background:t.amber+"22", color:t.amber, border:"1px solid "+t.amber+"44" }}>{paused} PAUSED</span>}
 
@@ -640,18 +654,6 @@ export default function CronVisualizer() {
             <div style={{ marginBottom:14, padding:"10px 14px", borderRadius:8, background:t.red+"12", border:"1px solid "+t.red+"44", color:t.red, fontSize:11, display:"flex", alignItems:"center", gap:8 }}>
               <span>⚠</span><span>Cannot reach server — {error}</span>
               <span style={{ fontSize:9, color:t.slate, marginLeft:"auto" }}>Is the SSH tunnel running? Is cron_api.py running?</span>
-            </div>
-          )}
-
-          {/* Stats */}
-          {!loading&&!error&&(
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, marginBottom:14 }}>
-              {[{label:"Total Jobs",value:tasks.length,color:t.blue},{label:"Active",value:active,color:t.green},{label:"Paused",value:paused,color:t.amber}].map(({label,value,color})=>(
-                <div key={label} style={{ background:t.statBg(color), border:"1px solid "+t.statBorder(color), borderRadius:8, padding:"8px 12px", textAlign:"center" }}>
-                  <div style={{ fontSize:20, fontWeight:800, color }}>{value}</div>
-                  <div style={{ fontSize:9, color:t.textMuted, fontWeight:700, letterSpacing:0.5, marginTop:2 }}>{label.toUpperCase()}</div>
-                </div>
-              ))}
             </div>
           )}
 

@@ -235,22 +235,37 @@ def next_run_time(expr):
 
 # ── NOTES ────────────────────────────────────────────────────────────────────
 
-def notes_path(command):
+def notes_base(command):
     parts = command.split(None, 1)
     lookup = parts[1] if len(parts) == 2 and "cronwrap" in parts[0] else command
-    return os.path.join(NOTES_DIR, job_id(lookup) + ".txt")
+    return os.path.join(NOTES_DIR, job_id(lookup))
 
 def get_notes(command):
     try:
-        with open(notes_path(command), "r") as f:
+        with open(notes_base(command) + ".txt", "r") as f:
             return f.read()
     except Exception:
         return ""
 
 def save_notes(command, text):
     try:
-        with open(notes_path(command), "w") as f:
+        with open(notes_base(command) + ".txt", "w") as f:
             f.write(text)
+        return True
+    except Exception:
+        return False
+
+def get_description(command):
+    try:
+        with open(notes_base(command) + ".desc", "r") as f:
+            return f.read().strip()
+    except Exception:
+        return ""
+
+def save_description(command, text):
+    try:
+        with open(notes_base(command) + ".desc", "w") as f:
+            f.write(text.strip())
         return True
     except Exception:
         return False
@@ -277,6 +292,8 @@ def enrich(entry):
     entry["exitCode"]    = exit_code
     entry["hasWrapper"]  = has_wrapper
     entry["notes"]       = get_notes(cmd)
+    saved_desc           = get_description(cmd)
+    entry["description"] = saved_desc if saved_desc else cmd
     return entry
 
 
@@ -389,6 +406,16 @@ class CronHandler(BaseHTTPRequestHandler):
             if entry is None:
                 self.send_json(404, {"error": "entry not found"}); return
             ok = save_notes(entry["command"], text)
+            self.send_json(200 if ok else 500, {"ok": ok})
+
+        elif self.path == "/crons/description":
+            idx  = body.get("index")
+            text = body.get("description", "").strip()
+            entries, _ = read_crontab()
+            entry = next((e for e in entries if e["index"] == idx), None)
+            if entry is None:
+                self.send_json(404, {"error": "entry not found"}); return
+            ok = save_description(entry["command"], text)
             self.send_json(200 if ok else 500, {"ok": ok})
 
         elif self.path == "/crons/add":
