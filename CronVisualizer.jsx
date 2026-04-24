@@ -150,7 +150,7 @@ function cronToState(expr) {
   return def;
 }
 
-// ─── RELATIVE TIME ────────────────────────────────────────────────────────────
+// ─── TIME HELPERS ─────────────────────────────────────────────────────────────
 
 function relativeTime(iso) {
   if (!iso) return null;
@@ -159,6 +159,29 @@ function relativeTime(iso) {
   const mins=Math.floor(abs/60000), hrs=Math.floor(abs/3600000), days=Math.floor(abs/86400000);
   const lbl = mins<60?mins+"m":hrs<24?hrs+"h":days+"d";
   return diff>0?"in "+lbl:lbl+" ago";
+}
+
+function fmtDateTime(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  const mm   = String(d.getMonth()+1).padStart(2,"0");
+  const dd   = String(d.getDate()).padStart(2,"0");
+  const yyyy = d.getFullYear();
+  const hh   = String(d.getHours()).padStart(2,"0");
+  const min  = String(d.getMinutes()).padStart(2,"0");
+  const ss   = String(d.getSeconds()).padStart(2,"0");
+  return `${mm}/${dd}/${yyyy} ${hh}:${min}:${ss}`;
+}
+
+function fmtDateTimeShort(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  const mm  = String(d.getMonth()+1).padStart(2,"0");
+  const dd  = String(d.getDate()).padStart(2,"0");
+  const hh  = String(d.getHours()).padStart(2,"0");
+  const min = String(d.getMinutes()).padStart(2,"0");
+  const ss  = String(d.getSeconds()).padStart(2,"0");
+  return `${mm}/${dd} ${hh}:${min}:${ss}`;
 }
 
 // ─── SHARED STYLE HELPERS ─────────────────────────────────────────────────────
@@ -371,15 +394,7 @@ function HistoryPanel({ taskIndex }) {
       .catch(() => { setRows([]); setLoading(false); });
   }, [taskIndex, days]);
 
-  const fmt = iso => {
-    if (!iso) return "—";
-    const d = new Date(iso), now = Date.now(), diff = now - d.getTime(), abs = Math.abs(diff);
-    if (abs < 60000) return "just now";
-    const mins = Math.floor(abs/60000), hrs = Math.floor(abs/3600000);
-    if (mins < 60)  return mins+"m ago";
-    if (hrs  < 24)  return hrs+"h ago";
-    return d.toLocaleDateString()+' '+d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-  };
+  const fmt = iso => fmtDateTimeShort(iso) || "—";
 
   const fmtDur = s => s == null ? "—" : s < 60 ? s+"s" : Math.floor(s/60)+"m "+((s%60)+"s");
 
@@ -522,17 +537,32 @@ function TaskCard({ task, onToggle, onEdit, onNotes, onDelete, onRefresh }) {
       {/* Time grid + Delete */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr auto", gap:8, alignItems:"stretch" }}>
         <div style={{ background:t.inputBg, border:"1px solid "+t.inputBorder, borderRadius:6, padding:"6px 8px" }}>
-          <div style={{ fontSize:8, color:t.textMuted, fontWeight:700, letterSpacing:0.8, marginBottom:2 }}>NEXT RUN</div>
-          <div style={{ fontSize:11, color:task.enabled&&nextRel?.startsWith("in")?t.green:t.slate, fontWeight:700 }}>
-            {task.enabled ? (nextRel||"—") : "Paused"}
-          </div>
+          <div style={{ fontSize:8, color:t.textMuted, fontWeight:700, letterSpacing:0.8, marginBottom:3 }}>NEXT RUN</div>
+          {task.enabled ? (
+            <>
+              <div style={{ fontSize:10, color:t.slate, fontWeight:600, fontFamily:"monospace" }}>{fmtDateTime(task.nextRunAt)||"—"}</div>
+              <div style={{ fontSize:10, color:nextRel?.startsWith("in")?t.green:t.slate, fontWeight:700, marginTop:1 }}>{nextRel||"—"}</div>
+            </>
+          ) : (
+            <div style={{ fontSize:11, color:t.amber, fontWeight:700 }}>Paused</div>
+          )}
         </div>
         <div style={{ background:t.inputBg, border:"1px solid "+t.inputBorder, borderRadius:6, padding:"6px 8px" }}>
           <div style={{ fontSize:8, color:t.textMuted, fontWeight:700, letterSpacing:0.8, marginBottom:3 }}>LAST RUN</div>
-          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-            <span title={task.lastRunAt||undefined} style={{ fontSize:11, color:t.slate, fontWeight:700, cursor:task.lastRunAt?"help":"default" }}>{lastRel||<span style={{ color:t.textDim }}>Never</span>}</span>
-            <ExitBadge exitCode={task.exitCode} hasWrapper={task.hasWrapper} />
-          </div>
+          {task.lastRunAt ? (
+            <>
+              <div style={{ fontSize:10, color:t.slate, fontWeight:600, fontFamily:"monospace" }}>{fmtDateTime(task.lastRunAt)}</div>
+              <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:1 }}>
+                <span style={{ fontSize:10, color:t.slate, fontWeight:700 }}>{lastRel}</span>
+                <ExitBadge exitCode={task.exitCode} hasWrapper={task.hasWrapper} />
+              </div>
+            </>
+          ) : (
+            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+              <span style={{ fontSize:11, color:t.textDim }}>Never</span>
+              <ExitBadge exitCode={task.exitCode} hasWrapper={task.hasWrapper} />
+            </div>
+          )}
           {task.jobId && <div style={{ fontSize:8, color:t.textDimmer, marginTop:2, fontFamily:"monospace" }}>id:{task.jobId}</div>}
         </div>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end" }}>
