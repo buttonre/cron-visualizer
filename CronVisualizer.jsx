@@ -380,7 +380,7 @@ function ExitBadge({ exitCode, hasWrapper }) {
 
 const DAYS_OPTIONS = [1, 3, 7];
 
-function HistoryPanel({ taskIndex }) {
+function HistoryPanel({ taskIndex, refreshKey }) {
   const t = useTheme();
   const [days, setDays]       = useState(7);
   const [rows, setRows]       = useState(null);
@@ -392,7 +392,7 @@ function HistoryPanel({ taskIndex }) {
       .then(r => r.json())
       .then(d => { setRows(Array.isArray(d) ? d : []); setLoading(false); })
       .catch(() => { setRows([]); setLoading(false); });
-  }, [taskIndex, days]);
+  }, [taskIndex, days, refreshKey]);
 
   const fmt = iso => fmtDateTimeShort(iso) || "—";
 
@@ -479,7 +479,7 @@ function NotesField({ value, onSave }) {
   );
 }
 
-function TaskCard({ task, onToggle, onEdit, onNotes, onDelete, onRefresh }) {
+function TaskCard({ task, onToggle, onEdit, onNotes, onDelete, onRefresh, refreshKey }) {
   const t       = useTheme();
   const scColor = task.enabled ? t.green : t.amber;
   const scLabel = task.enabled ? "ACTIVE" : "PAUSED";
@@ -587,7 +587,7 @@ function TaskCard({ task, onToggle, onEdit, onNotes, onDelete, onRefresh }) {
           {showHistory?"▲ HIDE HISTORY":"▼ RUN HISTORY"}
         </button>
       </div>
-      {showHistory && <HistoryPanel taskIndex={task.index} />}
+      {showHistory && <HistoryPanel taskIndex={task.index} refreshKey={refreshKey} />}
     </div>
   );
 }
@@ -791,7 +791,7 @@ export default function CronVisualizer() {
                 <div style={{ fontSize:10, marginTop:4 }}>{hideDisabled?"Toggle SHOW ALL to see paused jobs":"Use + ADD JOB to create one"}</div>
               </div>
             ) : visibleTasks.map(task=>(
-              <TaskCard key={task.taskId} task={task} onToggle={handleToggle} onEdit={handleEdit} onNotes={handleNotes} onDelete={handleDelete} onRefresh={handleRefresh} />
+              <TaskCard key={task.taskId} task={task} onToggle={handleToggle} onEdit={handleEdit} onNotes={handleNotes} onDelete={handleDelete} onRefresh={handleRefresh} refreshKey={lastRefresh} />
             ))}
           </div>
 
