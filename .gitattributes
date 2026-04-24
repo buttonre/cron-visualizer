@@ -1,0 +1,2 @@
+# Force LF line endings for shell scripts — prevents CRLF on Linux after git pull
+*.sh text eol=lf
