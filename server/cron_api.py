@@ -427,26 +427,31 @@ class CronHandler(BaseHTTPRequestHandler):
             old_cmd = entry["command"]
             expr = new_expr if new_expr else entry["cronExpression"]
             cmd  = new_cmd  if new_cmd  else old_cmd
-            # Carry over notes/.desc files when command string changes (job_id changes)
+            # Carry over all job data when command string changes (job_id changes)
             if cmd != old_cmd:
                 import shutil
-                old_base = notes_base(old_cmd)
-                new_base = notes_base(cmd)
+                def _lookup(c):
+                    p = c.split(None, 1)
+                    return p[1] if len(p) == 2 and "cronwrap" in p[0] else c
+                old_lkp = _lookup(old_cmd)
+                new_lkp = _lookup(cmd)
+                old_base = os.path.join(NOTES_DIR,   job_id(old_lkp))
+                new_base = os.path.join(NOTES_DIR,   job_id(new_lkp))
+                # Notes and desc: don't overwrite if user already has content for new cmd
                 for ext in (".txt", ".desc"):
                     src = old_base + ext
                     dst = new_base + ext
                     if os.path.exists(src) and not os.path.exists(dst):
                         try: shutil.copy2(src, dst)
                         except Exception: pass
-                # Copy status file so Last Run / badge survives command rename
-                def _lookup(c):
-                    p = c.split(None, 1)
-                    return p[1] if len(p) == 2 and "cronwrap" in p[0] else c
-                old_status = os.path.join(STATUS_DIR, job_id(_lookup(old_cmd)) + ".json")
-                new_status = os.path.join(STATUS_DIR, job_id(_lookup(cmd))     + ".json")
-                if os.path.exists(old_status) and not os.path.exists(new_status):
-                    try: shutil.copy2(old_status, new_status)
-                    except Exception: pass
+                # Status and history: always overwrite — carry the old job's real run
+                # state forward rather than showing stale data from previous test runs
+                for src_dir, ext in [(STATUS_DIR, ".json"), (HISTORY_DIR, ".jsonl")]:
+                    src = os.path.join(src_dir, job_id(old_lkp) + ext)
+                    dst = os.path.join(src_dir, job_id(new_lkp) + ext)
+                    if os.path.exists(src):
+                        try: shutil.copy2(src, dst)
+                        except Exception: pass
             new_line = expr + " " + cmd
             if not entry["enabled"]:
                 new_line = "# " + new_line
