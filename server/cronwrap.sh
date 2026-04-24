@@ -60,7 +60,7 @@ printf '{"command":"%s","last_run":"%s","end_time":"%s","exit_code":%d,"duration
     "$CMD" "$START" "$END" "$EXIT_CODE" "$DUR" > "$STATUS_FILE"
 
 # Append to history file, keep last 1000 entries (~7 days for per-minute jobs)
-printf '{"ts":"%s","exit":%d,"dur":%d}\n' "$START" "$EXIT_CODE" "$DUR" >> "$HISTORY_FILE"
+printf '{"ts":"%s","end":"%s","exit":%d,"dur":%d}\n' "$START" "$END" "$EXIT_CODE" "$DUR" >> "$HISTORY_FILE"
 tail -n 1000 "$HISTORY_FILE" > "$HISTORY_FILE.tmp" && mv "$HISTORY_FILE.tmp" "$HISTORY_FILE"
 
 # Send email alert on failure if enabled

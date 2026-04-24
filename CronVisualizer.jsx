@@ -403,18 +403,20 @@ function HistoryPanel({ taskIndex }) {
       )}
 
       {!loading && rows && rows.length > 0 && (
-        <div style={{ maxHeight:180, overflowY:"auto" }}>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto", gap:"2px 10px", alignItems:"center" }}>
-            <span style={{ fontSize:8, color:t.textDim, fontWeight:700, letterSpacing:0.5 }}>WHEN</span>
+        <div style={{ maxHeight:200, overflowY:"auto" }}>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr auto auto", gap:"2px 10px", alignItems:"center" }}>
+            <span style={{ fontSize:8, color:t.textDim, fontWeight:700, letterSpacing:0.5 }}>START</span>
+            <span style={{ fontSize:8, color:t.textDim, fontWeight:700, letterSpacing:0.5 }}>END</span>
             <span style={{ fontSize:8, color:t.textDim, fontWeight:700, letterSpacing:0.5 }}>DUR</span>
             <span style={{ fontSize:8, color:t.textDim, fontWeight:700, letterSpacing:0.5 }}>STATUS</span>
             {rows.map((r, i) => {
               const ok = r.exit === 0;
               const hint = EXIT_HINTS[r.exit] || ("Exit "+r.exit);
               return [
-                <span key={"w"+i} style={{ fontSize:10, color:t.slate }}>{fmt(r.ts)}</span>,
-                <span key={"d"+i} style={{ fontSize:10, color:t.textMuted }}>{fmtDur(r.dur)}</span>,
-                <span key={"s"+i} title={hint} style={{ fontSize:9, fontWeight:800, padding:"1px 5px", borderRadius:3, background:(ok?t.green:t.red)+"18", color:ok?t.green:t.red, border:"1px solid "+(ok?t.green:t.red)+"33", cursor:"help", whiteSpace:"nowrap" }}>
+                <span key={"s"+i}  title={r.ts}  style={{ fontSize:10, color:t.slate }}>{fmt(r.ts)}</span>,
+                <span key={"e"+i}  title={r.end} style={{ fontSize:10, color:t.textMuted }}>{r.end ? fmt(r.end) : "—"}</span>,
+                <span key={"d"+i}  style={{ fontSize:10, color:t.textMuted }}>{fmtDur(r.dur)}</span>,
+                <span key={"st"+i} title={hint} style={{ fontSize:9, fontWeight:800, padding:"1px 5px", borderRadius:3, background:(ok?t.green:t.red)+"18", color:ok?t.green:t.red, border:"1px solid "+(ok?t.green:t.red)+"33", cursor:"help", whiteSpace:"nowrap" }}>
                   {ok?"✓ OK":"✗ ERR "+r.exit}
                 </span>
               ];
@@ -528,7 +530,7 @@ function TaskCard({ task, onToggle, onEdit, onNotes, onDelete, onRefresh }) {
         <div style={{ background:t.inputBg, border:"1px solid "+t.inputBorder, borderRadius:6, padding:"6px 8px" }}>
           <div style={{ fontSize:8, color:t.textMuted, fontWeight:700, letterSpacing:0.8, marginBottom:3 }}>LAST RUN</div>
           <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-            <span style={{ fontSize:11, color:t.slate, fontWeight:700 }}>{lastRel||<span style={{ color:t.textDim }}>Never</span>}</span>
+            <span title={task.lastRunAt||undefined} style={{ fontSize:11, color:t.slate, fontWeight:700, cursor:task.lastRunAt?"help":"default" }}>{lastRel||<span style={{ color:t.textDim }}>Never</span>}</span>
             <ExitBadge exitCode={task.exitCode} hasWrapper={task.hasWrapper} />
           </div>
           {task.jobId && <div style={{ fontSize:8, color:t.textDimmer, marginTop:2, fontFamily:"monospace" }}>id:{task.jobId}</div>}
@@ -620,7 +622,7 @@ export default function CronVisualizer() {
     } catch(err) { setError(err.message); }
   },[]);
 
-  useEffect(()=>{ const iv=setInterval(()=>fetchTasks(),60000); return()=>clearInterval(iv); },[fetchTasks]);
+  useEffect(()=>{ const iv=setInterval(()=>fetchTasks(),30000); return()=>clearInterval(iv); },[fetchTasks]);
 
   useEffect(()=>{
     fetch(API_URL+"/info",{headers:API_HEADERS,cache:"no-store"})

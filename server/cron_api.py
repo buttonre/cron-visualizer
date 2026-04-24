@@ -438,6 +438,15 @@ class CronHandler(BaseHTTPRequestHandler):
                     if os.path.exists(src) and not os.path.exists(dst):
                         try: shutil.copy2(src, dst)
                         except Exception: pass
+                # Copy status file so Last Run / badge survives command rename
+                def _lookup(c):
+                    p = c.split(None, 1)
+                    return p[1] if len(p) == 2 and "cronwrap" in p[0] else c
+                old_status = os.path.join(STATUS_DIR, job_id(_lookup(old_cmd)) + ".json")
+                new_status = os.path.join(STATUS_DIR, job_id(_lookup(cmd))     + ".json")
+                if os.path.exists(old_status) and not os.path.exists(new_status):
+                    try: shutil.copy2(old_status, new_status)
+                    except Exception: pass
             new_line = expr + " " + cmd
             if not entry["enabled"]:
                 new_line = "# " + new_line
